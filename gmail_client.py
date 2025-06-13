@@ -8,16 +8,16 @@ import email
 from email.mime.text import MIMEText
 import pickle
 
-# If modifying these scopes, delete the file token.json.
+# If modifying these scopes, delete the file token_email.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 def get_gmail_service():
     """Get Gmail API service instance."""
     creds = None
     
-    # The file token.json stores the user's access and refresh tokens
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    # The file token_email.json stores the user's access and refresh tokens
+    if os.path.exists('token_email.json'):
+        creds = Credentials.from_authorized_user_file('token_email.json', SCOPES)
     
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
@@ -29,7 +29,7 @@ def get_gmail_service():
             creds = flow.run_local_server(port=0)
         
         # Save the credentials for the next run
-        with open('token.json', 'w') as token:
+        with open('token_email.json', 'w') as token:
             token.write(creds.to_json())
 
     return build('gmail', 'v1', credentials=creds)
