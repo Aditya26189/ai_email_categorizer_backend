@@ -21,26 +21,40 @@ def classify_email(subject: str, body: str) -> str:
     if not api_key:
         return "Error: GEMINI_API_KEY not found in environment variables"
 
-    # API endpoint (updated for Gemini 2.0 Flash)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    # API endpoint
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
     
     # Prepare the prompt
-    prompt = f"""Please classify the following email into exactly one of these categories:
-    - Internship Application
-    - Job Offer
-    - Funding Request
-    - Product Review Request
-    - Article Submission
-    - Partnership Inquiry
-    - Meeting Request
-    - Legal/Compliance
-    - Order Notification
-    - Customer Feedback
+    prompt = f"""You are an email classifier. Your task is to carefully analyze the email content and categorize it into exactly one of these categories:
 
-    Email Subject: {subject}
-    Email Body: {body}
+- Internship
+- Job Offer
+- Funding
+- Product Review
+- Newsletter
+- Event Invitation
+- Meeting Request
+- Research Article Request
+- Spam / Promotion
+- General Inquiry
+- Security Alert (for account security notifications, login alerts, password changes, etc.)
 
-    Return ONLY the category name, nothing else."""
+Important Instructions:
+1. Read the ENTIRE email body thoroughly - do not rely solely on the subject line
+2. Subjects can be misleading - always verify the actual content in the body
+3. Look for key details in the body that indicate the true purpose of the email
+4. Consider the context and tone of the entire message
+5. If the email could fit multiple categories, choose the most specific one
+6. Pay special attention to security-related emails (login alerts, password changes, etc.)
+7. Return ONLY the category name, nothing else
+
+Email Subject:
+{subject}
+
+Email Body:
+{body}
+
+Category:"""
 
     # Prepare the request payload
     payload = {
@@ -51,9 +65,10 @@ def classify_email(subject: str, body: str) -> str:
         }]
     }
 
-    # Set up headers (no API key needed in header for this endpoint)
+    # Set up headers with API key
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
     }
 
     try:
