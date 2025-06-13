@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from classifier import classify_email
+from gmail_client import get_latest_emails
+from typing import List, Dict
 
 app = FastAPI(
     title="Email Classifier API",
@@ -14,6 +16,29 @@ class EmailRequest(BaseModel):
 
 class ClassificationResponse(BaseModel):
     category: str
+
+class EmailPreview(BaseModel):
+    subject: str
+    body: str
+
+@app.get("/emails", response_model=List[EmailPreview])
+async def get_emails():
+    """
+    Get the latest 5 emails from the user's Gmail inbox.
+    
+    Returns:
+        List[EmailPreview]: List of email previews containing subject and body
+        
+    Raises:
+        HTTPException: If fetching emails fails
+    """
+    try:
+        emails = get_latest_emails(5)
+        if not emails:
+            return []
+        return emails
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch emails: {str(e)}")
 
 @app.post("/classify", response_model=ClassificationResponse)
 async def classify_email_endpoint(request: EmailRequest):

@@ -21,8 +21,8 @@ def classify_email(subject: str, body: str) -> str:
     if not api_key:
         return "Error: GEMINI_API_KEY not found in environment variables"
 
-    # API endpoint
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+    # API endpoint (updated for Gemini 2.0 Flash)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     
     # Prepare the prompt
     prompt = f"""Please classify the following email into exactly one of these categories:
@@ -51,10 +51,9 @@ def classify_email(subject: str, body: str) -> str:
         }]
     }
 
-    # Set up headers with API key
+    # Set up headers (no API key needed in header for this endpoint)
     headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": api_key
+        "Content-Type": "application/json"
     }
 
     try:
@@ -77,4 +76,4 @@ def classify_email(subject: str, body: str) -> str:
     except (KeyError, IndexError) as e:
         return f"Error: Failed to parse API response - {str(e)}"
     except Exception as e:
-        return f"Error: An unexpected error occurred - {str(e)}" 
+        return f"Error: An unexpected error occurred - {str(e)}"
