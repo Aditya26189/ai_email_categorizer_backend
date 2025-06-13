@@ -1,5 +1,5 @@
 from classifier import classify_email
-from storage import save_email, load_emails
+from storage import storage
 
 def test_classification_and_storage():
     """
@@ -26,14 +26,14 @@ def test_classification_and_storage():
     
     print("\nTesting storage...")
     # Save the email
-    if save_email(test_email):
+    if storage.save_email(test_email):
         print("Email saved successfully!")
     else:
         print("Email was not saved (possibly a duplicate)")
     
     # Load and verify the saved email
     print("\nVerifying saved email...")
-    saved_emails = load_emails()
+    saved_emails = storage.load_emails()
     found = False
     
     for email in saved_emails:

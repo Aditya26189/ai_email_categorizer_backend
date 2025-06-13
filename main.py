@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from classifier import classify_email
 from gmail_client import get_latest_emails
-from storage import save_email
+from storage import storage
 from typing import List, Dict
 
 app = FastAPI(
@@ -60,7 +60,7 @@ async def classify_and_store(request: EmailRequest):
         }
         
         # Save the email
-        if save_email(email_dict):
+        if storage.save_email(email_dict):
             return ClassifyAndStoreResponse(
                 category=category,
                 status="saved"
