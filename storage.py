@@ -19,11 +19,14 @@ class MongoDBStorage:
             raise ValueError("Missing required environment variable: MONGODB_URI")
         
         try:
-            # Connect with retryWrites and serverSelectionTimeoutMS options
+            # Connect with SSL/TLS settings
             self.client = MongoClient(
                 self.mongodb_uri,
                 serverSelectionTimeoutMS=5000,  # 5 second timeout
-                retryWrites=True
+                retryWrites=True,
+                tls=True,  # Enable TLS/SSL
+                tlsAllowInvalidCertificates=False,  # Don't allow invalid certificates
+                tlsAllowInvalidHostnames=False  # Don't allow invalid hostnames
             )
             # Verify connection
             self.client.admin.command('ping')
@@ -46,22 +49,31 @@ class MongoDBStorage:
         If the email exists and force_regenerate_summary is True, update its summary.
         
         Args:
-            email_data (dict): Email data including subject, body, category, and summary
+            email_data (dict): Email data including subject, body, category, summary, sender, and timestamp
             force_regenerate_summary (bool): If True, updates summary for existing email
             
         Returns:
             bool: True if email was saved or updated, False if it already existed without update
         """
         try:
-            # Check if email with same subject already exists
-            existing = self.collection.find_one({"subject": email_data["subject"]})
+            # Check if email with same subject, sender, and timestamp already exists
+            existing = self.collection.find_one({
+                "subject": email_data["subject"],
+                "sender": email_data.get("sender", "Unknown"),
+                "timestamp": email_data.get("timestamp")
+            })
+            
             if existing:
                 # If force_regenerate_summary is True, update the summary
                 if force_regenerate_summary and "body" in email_data:
                     from utils.llm_utils import summarize_to_bullets
                     new_summary = summarize_to_bullets(email_data["body"], force_regenerate=True)
                     self.collection.update_one(
-                        {"subject": email_data["subject"]},
+                        {
+                            "subject": email_data["subject"],
+                            "sender": email_data.get("sender", "Unknown"),
+                            "timestamp": email_data.get("timestamp")
+                        },
                         {"$set": {"summary": new_summary}}
                     )
                     return True
@@ -72,7 +84,7 @@ class MongoDBStorage:
                 email_data["timestamp"] = datetime.utcnow().isoformat()
                 
             # Ensure all required fields are present
-            required_fields = ["subject", "body", "category", "summary"]
+            required_fields = ["subject", "body", "category", "summary", "sender", "timestamp"]
             for field in required_fields:
                 if field not in email_data:
                     email_data[field] = ""  # Default empty string for missing fields
@@ -82,7 +94,7 @@ class MongoDBStorage:
             return True
             
         except DuplicateKeyError:
-            print(f"⚠️ Duplicate email found: {email_data.get('subject', 'Unknown')}")
+            print(f"⚠️ Duplicate email found: {email_data.get('subject', 'Unknown')} from {email_data.get('sender', 'Unknown')}")
             return False
         except Exception as e:
             print(f"❌ Error saving email: {str(e)}")

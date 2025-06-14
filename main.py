@@ -113,11 +113,14 @@ class EmailResponse(BaseModel):
     body: str
     category: str
     timestamp: str
+    sender: str
     summary: Optional[List[str]] = None
 
 class ClassifiedEmail(BaseModel):
     subject: str
     category: str
+    timestamp: str
+    sender: str
     summary: Optional[List[str]] = None
 
 # API Endpoints
@@ -139,12 +142,17 @@ async def classify_and_store_email(request: EmailRequest):
         summary = summarize_to_bullets(request.body)
         print(f"Generated summary with {len(summary)} bullet points")
         
+        # Get current timestamp in ISO format
+        current_time = datetime.utcnow().isoformat()
+        print(f"📅 Timestamp: {current_time}")
+        
         # Prepare email document
         email_doc = {
             "subject": request.subject,
             "body": request.body,
             "category": category,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": current_time,
+            "sender": "Manual Classification",  # Since this is manual classification
             "summary": summary
         }
         
@@ -190,6 +198,16 @@ async def get_stored_emails(category: Optional[str] = Query(None, description="F
             emails = [e for e in emails if normalize_category(e['category']) == normalized_category]
             print(f"Emails after category filter: {len(emails)}")
         
+        # Ensure all emails have required fields
+        for email in emails:
+            if 'sender' not in email or not email['sender']:
+                email['sender'] = email.get('from', '')  # Try 'from' field if 'sender' is missing
+            if 'timestamp' not in email:
+                email['timestamp'] = datetime.utcnow().isoformat()
+                print(f"⚠️ Missing timestamp for {email['subject']}, set to: {email['timestamp']}")
+            if 'summary' not in email:
+                email['summary'] = []
+        
         return [EmailResponse(**email) for email in emails]
         
     except Exception as e:
@@ -210,6 +228,15 @@ async def classify_latest_emails():
         emails = get_latest_emails(10)
         if not emails:
             return []
+        
+        # Ensure all emails have required fields
+        for email in emails:
+            if 'sender' not in email or not email['sender']:
+                email['sender'] = email.get('from', '')  # Try 'from' field if 'sender' is missing
+            if 'timestamp' not in email:
+                email['timestamp'] = datetime.utcnow().isoformat()
+            if 'summary' not in email:
+                email['summary'] = []
         
         # Return classified emails
         return [ClassifiedEmail(**email) for email in emails]

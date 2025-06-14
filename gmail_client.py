@@ -9,6 +9,7 @@ from classifier import classify_email
 from storage import storage
 from utils.gmail_parser import extract_email_body
 from utils.llm_utils import summarize_to_bullets
+from datetime import datetime
 
 # Gmail API scopes
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -75,15 +76,67 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
             
             # Extract headers
             headers = msg['payload']['headers']
+            
+            # Extract subject
             subject = next(
                 (h['value'] for h in headers if h['name'].lower() == 'subject'),
                 '(No Subject)'
             )
             
+            # Extract sender email
+            from_header = next(
+                (h['value'] for h in headers if h['name'].lower() == 'from'),
+                ''
+            )
+            
+            # Extract email address from the From header
+            sender = from_header
+            if '<' in from_header and '>' in from_header:
+                # Extract email from "Name <email@example.com>"
+                sender = from_header.split('<')[1].split('>')[0]
+            elif '@' not in from_header:
+                # If no email found, use the raw header
+                sender = from_header
+                
+            print(f"📧 Processing email from: {sender}")
+            
+            # Extract date from email headers
+            date_header = next(
+                (h['value'] for h in headers if h['name'].lower() == 'date'),
+                None
+            )
+            
+            if date_header:
+                try:
+                    # Parse the email date header (e.g., "Wed, 13 Mar 2024 15:30:45 +0000")
+                    from email.utils import parsedate_to_datetime
+                    timestamp = parsedate_to_datetime(date_header).isoformat()
+                    print(f"📅 Email sent date: {timestamp}")
+                except Exception as e:
+                    print(f"⚠️ Error parsing date header: {e}")
+                    # Fallback to internal date if parsing fails
+                    timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
+                    print(f"⚠️ Using internal date instead: {timestamp}")
+            else:
+                # Fallback to internal date if no date header
+                timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
+                print(f"⚠️ No date header found, using internal date: {timestamp}")
+            
             # Extract and decode email body using our parser
             body = extract_email_body(msg['payload'])
             
-            # Generate summary for every email
+            # Check if this email was already processed
+            existing = storage.collection.find_one({
+                "subject": subject,
+                "sender": sender,
+                "timestamp": timestamp
+            })
+            
+            if existing:
+                print(f"⚠️ Skipped duplicate: {subject} from {sender}")
+                continue
+            
+            # Generate summary for new email
             summary = summarize_to_bullets(body)
             
             # Classify the email
@@ -98,13 +151,15 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
                 'body': body,
                 'category': category,
                 'gmail_id': message['id'],
-                'summary': summary  # Include the summary
+                'summary': summary,
+                'sender': sender,
+                'timestamp': timestamp
             }
             
             # Save to MongoDB
             if storage.save_email(email_data):
                 processed_emails.append(email_data)
-                print(f"✅ Processed and saved: {subject}")
+                print(f"✅ Processed and saved: {subject} from {sender}")
             else:
                 print(f"⚠️ Skipped duplicate: {subject}")
         
