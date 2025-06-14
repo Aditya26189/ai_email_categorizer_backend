@@ -15,9 +15,9 @@ def get_gmail_service():
     """Get authenticated Gmail API service."""
     creds = None
     
-    # Load credentials from token.json if it exists
-    if os.path.exists('token.json'):
-        with open('token.json', 'r') as token:
+    # Load credentials from token_gmail.json if it exists
+    if os.path.exists('token_gmail.json'):
+        with open('token_gmail.json', 'r') as token:
             creds = Credentials.from_authorized_user_info(json.load(token))
     
     # If credentials are invalid or don't exist, get new ones
@@ -30,7 +30,7 @@ def get_gmail_service():
             creds = flow.run_local_server(port=0)
         
         # Save credentials for future use
-        with open('token.json', 'w') as token:
+        with open('token_gmail.json', 'w') as token:
             token.write(creds.to_json())
     
     # Build and return Gmail service
