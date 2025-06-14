@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from typing import List, Dict, Optional
-from pymongo import MongoClient, ASCENDING
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from pymongo.errors import ConnectionFailure, OperationFailure, DuplicateKeyError
 from dotenv import load_dotenv
 
@@ -12,11 +12,11 @@ class MongoDBStorage:
     def __init__(self):
         """Initialize MongoDB connection using environment variables."""
         self.mongodb_uri = os.getenv('MONGODB_URI')
-        self.db_name = os.getenv('DB_NAME')
-        self.collection_name = os.getenv('COLLECTION_NAME')
+        self.db_name = os.getenv('DB_NAME', 'email_db')  # Default database name
+        self.collection_name = os.getenv('COLLECTION_NAME', 'emails')  # Default collection name
         
-        if not all([self.mongodb_uri, self.db_name, self.collection_name]):
-            raise ValueError("Missing required environment variables: MONGODB_URI, DB_NAME, or COLLECTION_NAME")
+        if not self.mongodb_uri:
+            raise ValueError("Missing required environment variable: MONGODB_URI")
         
         try:
             # Connect with retryWrites and serverSelectionTimeoutMS options
@@ -34,7 +34,7 @@ class MongoDBStorage:
             self.collection.create_index([("subject", ASCENDING)], unique=True)
             self.collection.create_index([("timestamp", ASCENDING)])
             
-            print("✅ Successfully connected to MongoDB")
+            print(f"✅ Successfully connected to MongoDB: {self.db_name}.{self.collection_name}")
         except ConnectionFailure as e:
             raise ConnectionError(f"Failed to connect to MongoDB: {str(e)}")
         except Exception as e:
@@ -51,22 +51,34 @@ class MongoDBStorage:
             bool: True if email was saved, False if duplicate
         """
         try:
+            # Debug: Print connection info
+            print(f"\nMongoDB Connection Info:")
+            print(f"URI: {self.mongodb_uri}")
+            print(f"Database: {self.db_name}")
+            print(f"Collection: {self.collection_name}")
+            
+            # Debug: Check if email exists
+            existing = self.collection.find_one({"subject": email['subject']})
+            if existing:
+                print(f"\nFound existing email:")
+                print(f"Subject: {existing['subject']}")
+                print(f"Category: {existing.get('category', 'N/A')}")
+                print(f"Timestamp: {existing.get('timestamp', 'N/A')}")
+                return False
+            
             # Add timestamp
             email['timestamp'] = datetime.utcnow().isoformat()
             
-            # Insert the email (will fail if subject is duplicate due to unique index)
-            self.collection.insert_one(email)
-            print("✅ Email saved to MongoDB")
+            # Insert the email
+            result = self.collection.insert_one(email)
+            print(f"\nSuccessfully saved email:")
+            print(f"Subject: {email['subject']}")
+            print(f"Category: {email['category']}")
+            print(f"Timestamp: {email['timestamp']}")
             return True
             
-        except DuplicateKeyError:
-            print("⚠️ Email with this subject already exists.")
-            return False
-        except OperationFailure as e:
-            print(f"❌ Failed to save email: {str(e)}")
-            return False
         except Exception as e:
-            print(f"❌ Unexpected error saving email: {str(e)}")
+            print(f"\nError saving email: {str(e)}")
             return False
 
     def load_emails(self, limit: Optional[int] = None) -> List[Dict]:
@@ -115,6 +127,31 @@ class MongoDBStorage:
         except Exception as e:
             print(f"❌ Error finding email: {str(e)}")
             return None
+
+    def get_all_emails(self) -> List[Dict]:
+        """
+        Get all emails sorted by timestamp (newest first).
+        
+        Returns:
+            List[Dict]: List of email documents sorted by timestamp
+        """
+        try:
+            # Debug: Print connection info
+            print(f"\nFetching all emails from:")
+            print(f"Database: {self.db_name}")
+            print(f"Collection: {self.collection_name}")
+            
+            emails = list(self.collection.find(
+                {}, 
+                {'_id': 0}
+            ).sort('timestamp', DESCENDING))
+            
+            print(f"Found {len(emails)} emails")
+            return emails
+            
+        except Exception as e:
+            print(f"\nError retrieving emails: {str(e)}")
+            return []
 
     def close(self):
         """Close the MongoDB connection."""

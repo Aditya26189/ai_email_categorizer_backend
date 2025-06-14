@@ -1,4 +1,5 @@
 from storage import storage
+from classifier import classify_email
 from datetime import datetime
 
 def test_mongodb_storage():
@@ -9,24 +10,31 @@ def test_mongodb_storage():
     test_emails = [
         {
             "subject": "Product Review Request",
-            "body": "Would you like to review our new AI tool?",
-            "category": "Product Review Request"
+            "body": "Would you like to review our new AI tool? We'd love your feedback on our latest features."
         },
         {
-            "subject": "Meeting Request",
-            "body": "Let's schedule a meeting to discuss the project.",
-            "category": "Meeting Request"
+            "subject": "Meeting Request: Project Discussion",
+            "body": "Let's schedule a meeting to discuss the project timeline and deliverables for next week."
         },
         {
-            "subject": "Job Offer",
-            "body": "We would like to offer you a position...",
-            "category": "Job Offer"
+            "subject": "Job Offer - Senior Developer Position",
+            "body": "We were impressed by your profile and would like to offer you a position as Senior Developer."
         }
     ]
     
-    # Test 1: Save emails
-    print("\n📝 Test 1: Saving Emails")
+    # Test 1: Classify and Save emails
+    print("\n📝 Test 1: Classifying and Saving Emails")
     for email in test_emails:
+        # Classify the email
+        category = classify_email(email['subject'], email['body'])
+        if category.startswith("Error:"):
+            print(f"❌ Classification failed for '{email['subject']}': {category}")
+            continue
+            
+        # Add category to email
+        email['category'] = category
+        
+        # Save the email
         result = storage.save_email(email)
         print(f"Saved email '{email['subject']}': {'Success' if result else 'Skipped (duplicate)'}")
     
@@ -51,7 +59,7 @@ def test_mongodb_storage():
     
     # Test 5: Find specific email
     print("\n🔎 Test 5: Finding Specific Email")
-    test_subject = "Meeting Request"
+    test_subject = "Meeting Request: Project Discussion"
     found_email = storage.get_email_by_subject(test_subject)
     if found_email:
         print(f"Found email: {found_email['subject']} ({found_email['category']})")

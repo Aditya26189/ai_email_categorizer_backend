@@ -1,80 +1,153 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from classifier import classify_email
-from gmail_client import get_latest_emails
+from datetime import datetime
+from typing import List, Optional
+import os
+from dotenv import load_dotenv
 from storage import storage
-from typing import List, Dict
+from gmail_client import get_latest_emails
 
+# Load environment variables
+load_dotenv()
+
+# Initialize FastAPI app
 app = FastAPI(
     title="Email Classifier API",
-    description="API for classifying emails into predefined categories using Gemini Pro",
+    description="API for classifying emails using Gemini AI",
     version="1.0.0"
 )
 
+# CORS middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Define categories list
+CATEGORIES = [
+    "Internship", "Funding", "Review Request", "Newsletter",
+    "Job Offer", "Meeting Request", "Research Collaboration"
+]
+
+# Mock Gemini AI classification function
+def classify_email(subject: str, body: str) -> str:
+    """
+    Mock function to classify emails using Gemini AI.
+    In a real implementation, this would call the Gemini API.
+    """
+    # Simulate API call delay
+    import time
+    time.sleep(0.5)
+    
+    # Simple mock logic based on keywords
+    email_text = (subject + " " + body).lower()
+    
+    if "intern" in email_text or "internship" in email_text:
+        return "Internship"
+    elif "fund" in email_text or "grant" in email_text:
+        return "Funding"
+    elif "review" in email_text or "paper" in email_text:
+        return "Review Request"
+    elif "newsletter" in email_text or "update" in email_text:
+        return "Newsletter"
+    elif "job" in email_text or "position" in email_text:
+        return "Job Offer"
+    elif "meeting" in email_text or "schedule" in email_text:
+        return "Meeting Request"
+    elif "collaborate" in email_text or "research" in email_text:
+        return "Research Collaboration"
+    else:
+        # Default to Meeting Request if no clear category is found
+        return "Meeting Request"
+
+# Pydantic models
 class EmailRequest(BaseModel):
     subject: str
     body: str
 
-class ClassificationResponse(BaseModel):
-    category: str
-
-class EmailPreview(BaseModel):
+class EmailResponse(BaseModel):
     subject: str
     body: str
+    category: str
+    timestamp: str
 
 class ClassifiedEmail(BaseModel):
     subject: str
     category: str
 
-class ClassifyAndStoreResponse(BaseModel):
-    category: str
-    status: str
-
-@app.post("/classify-and-store", response_model=ClassifyAndStoreResponse)
-async def classify_and_store(request: EmailRequest):
+# API Endpoints
+@app.post("/classify", response_model=EmailResponse)
+async def classify_and_store_email(request: EmailRequest):
     """
-    Classify an email and store the result in the database.
-    
-    Args:
-        request (EmailRequest): The email subject and body
-        
-    Returns:
-        ClassifyAndStoreResponse: The classified category and storage status
-        
-    Raises:
-        HTTPException: If classification or storage fails
+    Classify an email and store it in MongoDB.
+    Returns 409 if email with same subject already exists.
     """
     try:
+        print(f"\nProcessing new email:")
+        print(f"Subject: {request.subject}")
+        
         # Classify the email
         category = classify_email(request.subject, request.body)
+        print(f"Classified as: {category}")
         
-        # Check if classification was successful
-        if category.startswith("Error:"):
-            raise HTTPException(status_code=500, detail=category)
-        
-        # Prepare the email dictionary
-        email_dict = {
+        # Prepare email document
+        email_doc = {
             "subject": request.subject,
             "body": request.body,
-            "category": category
+            "category": category,
+            "timestamp": datetime.utcnow().isoformat()
         }
         
-        # Save the email
-        if storage.save_email(email_dict):
-            return ClassifyAndStoreResponse(
-                category=category,
-                status="saved"
-            )
-        else:
-            return ClassifyAndStoreResponse(
-                category=category,
-                status="duplicate"
+        # Save using storage instance
+        if not storage.save_email(email_doc):
+            print(f"Email already exists in database")
+            raise HTTPException(
+                status_code=409,
+                detail="Email with this subject already exists"
             )
             
+        print(f"Email successfully processed and saved")
+        return EmailResponse(**email_doc)
+        
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
     except Exception as e:
+        print(f"Error in /classify endpoint: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to classify and store email: {str(e)}"
+            detail=f"Failed to process email: {str(e)}"
+        )
+
+@app.get("/emails", response_model=List[EmailResponse])
+async def get_stored_emails(category: Optional[str] = Query(None, description="Filter by category")):
+    """
+    Get all stored emails, optionally filtered by category.
+    Results are sorted by timestamp (newest first).
+    """
+    try:
+        print(f"\nFetching emails" + (f" with category: {category}" if category else ""))
+        
+        # Get all emails using load_emails
+        emails = storage.load_emails()
+        print(f"Total emails found: {len(emails)}")
+        
+        # Filter by category if specified
+        if category:
+            emails = [e for e in emails if e['category'] == category]
+            print(f"Emails after category filter: {len(emails)}")
+        
+        return [EmailResponse(**email) for email in emails]
+        
+    except Exception as e:
+        print(f"Error in /emails endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve emails: {str(e)}"
         )
 
 @app.get("/classify-emails", response_model=List[ClassifiedEmail])
@@ -118,46 +191,12 @@ async def classify_latest_emails():
             detail=f"Failed to fetch or classify emails: {str(e)}"
         )
 
-@app.get("/emails", response_model=List[EmailPreview])
-async def get_emails():
+@app.get("/categories", response_model=List[str])
+async def get_categories():
     """
-    Get the latest 5 emails from the user's Gmail inbox.
-    
-    Returns:
-        List[EmailPreview]: List of email previews containing subject and body
-        
-    Raises:
-        HTTPException: If fetching emails fails
+    Get the list of all available email categories.
     """
-    try:
-        emails = get_latest_emails(5)
-        if not emails:
-            return []
-        return emails
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch emails: {str(e)}")
-
-@app.post("/classify", response_model=ClassificationResponse)
-async def classify_email_endpoint(request: EmailRequest):
-    """
-    Classify an email based on its subject and body.
-    
-    Args:
-        request (EmailRequest): The email subject and body
-        
-    Returns:
-        ClassificationResponse: The classified category
-        
-    Raises:
-        HTTPException: If classification fails
-    """
-    result = classify_email(request.subject, request.body)
-    
-    # Check if the result is an error message
-    if result.startswith("Error:"):
-        raise HTTPException(status_code=500, detail=result)
-    
-    return ClassificationResponse(category=result)
+    return CATEGORIES
 
 if __name__ == "__main__":
     import uvicorn
