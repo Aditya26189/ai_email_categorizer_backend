@@ -7,6 +7,8 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from classifier import classify_email
 from storage import storage
+from utils.gmail_parser import extract_email_body
+from utils.llm_utils import summarize_to_bullets
 
 # Gmail API scopes
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -44,7 +46,7 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
         max_results (int): Maximum number of emails to fetch
         
     Returns:
-        List[Dict]: List of email data including subject, body, and category
+        List[Dict]: List of email data including subject, body, category, and summary
     """
     try:
         # Get Gmail service
@@ -78,11 +80,11 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
                 '(No Subject)'
             )
             
-            # Get message body
-            if 'parts' in msg['payload']:
-                body = msg['payload']['parts'][0]['body'].get('data', '')
-            else:
-                body = msg['payload']['body'].get('data', '')
+            # Extract and decode email body using our parser
+            body = extract_email_body(msg['payload'])
+            
+            # Generate summary for every email
+            summary = summarize_to_bullets(body)
             
             # Classify the email
             category = classify_email(subject, body)
@@ -90,12 +92,13 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
                 print(f"❌ Classification failed for '{subject}': {category}")
                 continue
             
-            # Prepare email data
+            # Prepare email data with summary
             email_data = {
                 'subject': subject,
                 'body': body,
                 'category': category,
-                'gmail_id': message['id']
+                'gmail_id': message['id'],
+                'summary': summary  # Include the summary
             }
             
             # Save to MongoDB

@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 from storage import storage
 from gmail_client import get_latest_emails
+from utils.llm_utils import summarize_to_bullets
 
 # Load environment variables
 load_dotenv()
@@ -112,10 +113,12 @@ class EmailResponse(BaseModel):
     body: str
     category: str
     timestamp: str
+    summary: Optional[List[str]] = None
 
 class ClassifiedEmail(BaseModel):
     subject: str
     category: str
+    summary: Optional[List[str]] = None
 
 # API Endpoints
 @app.post("/classify", response_model=EmailResponse)
@@ -132,12 +135,17 @@ async def classify_and_store_email(request: EmailRequest):
         category = classify_email(request.subject, request.body)
         print(f"Classified as: {category}")
         
+        # Generate summary for the email
+        summary = summarize_to_bullets(request.body)
+        print(f"Generated summary with {len(summary)} bullet points")
+        
         # Prepare email document
         email_doc = {
             "subject": request.subject,
             "body": request.body,
             "category": category,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "summary": summary
         }
         
         # Save using storage instance
@@ -194,48 +202,17 @@ async def get_stored_emails(category: Optional[str] = Query(None, description="F
 @app.get("/classify-emails", response_model=List[ClassifiedEmail])
 async def classify_latest_emails():
     """
-    Fetch the latest 5 emails from Gmail, classify them, and save to database.
+    Fetch the latest 10 emails from Gmail, classify them, and save to database.
     Skips duplicates and returns only successfully classified and saved emails.
     """
     try:
         # Get latest emails
-        emails = get_latest_emails(5)
+        emails = get_latest_emails(10)
         if not emails:
             return []
         
-        # Classify and save each email
-        classified_emails = []
-        for email in emails:
-            try:
-                # Classify the email
-                category = classify_email(email['subject'], email['body'])
-                # Skip if classification returned an error
-                if category.startswith("Error:"):
-                    continue
-                
-                # Prepare email document
-                email_doc = {
-                    "subject": email['subject'].strip(),
-                    "body": email['body'].strip(),
-                    "category": category.strip(),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-                
-                # Try to save to database
-                if storage.save_email(email_doc):
-                    classified_emails.append({
-                        "subject": email_doc['subject'],
-                        "category": email_doc['category']
-                    })
-                    print(f"Successfully classified and saved email: {email_doc['subject']}")
-                else:
-                    print(f"Skipped duplicate email: {email_doc['subject']}")
-                    
-            except Exception as e:
-                print(f"Error processing email {email['subject']}: {str(e)}")
-                continue
-        
-        return classified_emails
+        # Return classified emails
+        return [ClassifiedEmail(**email) for email in emails]
         
     except Exception as e:
         raise HTTPException(
@@ -250,6 +227,40 @@ async def get_categories():
     Categories are returned in their original case.
     """
     return CATEGORIES
+
+@app.post("/emails/{subject}/generate-summary")
+async def generate_email_summary(subject: str):
+    """
+    Generate a summary for a specific email.
+    This will create a new summary even if one already exists.
+    """
+    try:
+        # Find the email
+        email = storage.collection.find_one({"subject": subject})
+        if not email:
+            raise HTTPException(status_code=404, detail="Email not found")
+            
+        # Generate new summary
+        new_summary = summarize_to_bullets(email["body"])
+        print(f"Generated summary with {len(new_summary)} bullet points for: {subject}")
+        
+        # Update the email with new summary
+        storage.collection.update_one(
+            {"subject": subject},
+            {"$set": {"summary": new_summary}}
+        )
+        
+        return {
+            "message": "Summary generated successfully",
+            "subject": subject,
+            "summary": new_summary
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate summary: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn

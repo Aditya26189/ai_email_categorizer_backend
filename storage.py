@@ -40,45 +40,52 @@ class MongoDBStorage:
         except Exception as e:
             raise Exception(f"Unexpected error connecting to MongoDB: {str(e)}")
 
-    def save_email(self, email: Dict) -> bool:
+    def save_email(self, email_data: dict, force_regenerate_summary: bool = False) -> bool:
         """
-        Save an email to MongoDB with timestamp and duplicate checking.
+        Save an email to MongoDB if it doesn't already exist.
+        If the email exists and force_regenerate_summary is True, update its summary.
         
         Args:
-            email (Dict): Email data to save
+            email_data (dict): Email data including subject, body, category, and summary
+            force_regenerate_summary (bool): If True, updates summary for existing email
             
         Returns:
-            bool: True if email was saved, False if duplicate
+            bool: True if email was saved or updated, False if it already existed without update
         """
         try:
-            # Debug: Print connection info
-            print(f"\nMongoDB Connection Info:")
-            print(f"URI: {self.mongodb_uri}")
-            print(f"Database: {self.db_name}")
-            print(f"Collection: {self.collection_name}")
-            
-            # Debug: Check if email exists
-            existing = self.collection.find_one({"subject": email['subject']})
+            # Check if email with same subject already exists
+            existing = self.collection.find_one({"subject": email_data["subject"]})
             if existing:
-                print(f"\nFound existing email:")
-                print(f"Subject: {existing['subject']}")
-                print(f"Category: {existing.get('category', 'N/A')}")
-                print(f"Timestamp: {existing.get('timestamp', 'N/A')}")
+                # If force_regenerate_summary is True, update the summary
+                if force_regenerate_summary and "body" in email_data:
+                    from utils.llm_utils import summarize_to_bullets
+                    new_summary = summarize_to_bullets(email_data["body"], force_regenerate=True)
+                    self.collection.update_one(
+                        {"subject": email_data["subject"]},
+                        {"$set": {"summary": new_summary}}
+                    )
+                    return True
                 return False
-            
-            # Add timestamp
-            email['timestamp'] = datetime.utcnow().isoformat()
-            
+                
+            # Add timestamp if not present
+            if "timestamp" not in email_data:
+                email_data["timestamp"] = datetime.utcnow().isoformat()
+                
+            # Ensure all required fields are present
+            required_fields = ["subject", "body", "category", "summary"]
+            for field in required_fields:
+                if field not in email_data:
+                    email_data[field] = ""  # Default empty string for missing fields
+                
             # Insert the email
-            result = self.collection.insert_one(email)
-            print(f"\nSuccessfully saved email:")
-            print(f"Subject: {email['subject']}")
-            print(f"Category: {email['category']}")
-            print(f"Timestamp: {email['timestamp']}")
+            self.collection.insert_one(email_data)
             return True
             
+        except DuplicateKeyError:
+            print(f"⚠️ Duplicate email found: {email_data.get('subject', 'Unknown')}")
+            return False
         except Exception as e:
-            print(f"\nError saving email: {str(e)}")
+            print(f"❌ Error saving email: {str(e)}")
             return False
 
     def load_emails(self, limit: Optional[int] = None) -> List[Dict]:
@@ -94,7 +101,7 @@ class MongoDBStorage:
         try:
             # Find all documents, exclude _id field, sort by timestamp descending
             query = self.collection.find(
-                {}, 
+                {},
                 {'_id': 0}
             ).sort('timestamp', -1)
             
@@ -160,6 +167,52 @@ class MongoDBStorage:
             print("✅ MongoDB connection closed")
         except Exception as e:
             print(f"❌ Error closing MongoDB connection: {str(e)}")
+
+    def update_missing_summaries(self, batch_size: int = 10) -> int:
+        """
+        Update summaries for emails that don't have them.
+        Returns the number of emails updated.
+        
+        Args:
+            batch_size (int): Number of emails to process in one batch
+            
+        Returns:
+            int: Number of emails updated
+        """
+        try:
+            from utils.llm_utils import summarize_to_bullets
+            
+            # Find emails without summaries or with empty summaries
+            query = {
+                "$or": [
+                    {"summary": {"$exists": False}},
+                    {"summary": []},
+                    {"summary": [""]},
+                    {"summary": {"$size": 0}}
+                ]
+            }
+            
+            # Get batch of emails
+            emails = list(self.collection.find(query).limit(batch_size))
+            updated_count = 0
+            
+            for email in emails:
+                if "body" in email:
+                    # Generate new summary
+                    new_summary = summarize_to_bullets(email["body"])
+                    
+                    # Update the email
+                    self.collection.update_one(
+                        {"_id": email["_id"]},
+                        {"$set": {"summary": new_summary}}
+                    )
+                    updated_count += 1
+                    
+            return updated_count
+            
+        except Exception as e:
+            print(f"Error updating missing summaries: {str(e)}")
+            return 0
 
 # Create a singleton instance
 storage = MongoDBStorage() 
