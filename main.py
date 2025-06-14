@@ -30,39 +30,77 @@ app.add_middleware(
 # Define categories list
 CATEGORIES = [
     "Internship", "Funding", "Review Request", "Newsletter",
-    "Job Offer", "Meeting Request", "Research Collaboration"
+    "Job Offer", "Meeting Request", "Research Collaboration",
+    "Security Alert", "Welcome", "Notification"
 ]
+
+# Helper function to normalize category
+def normalize_category(category: str) -> str:
+    """
+    Normalize category by trimming whitespace and converting to lowercase.
+    """
+    return category.strip().lower()
 
 # Mock Gemini AI classification function
 def classify_email(subject: str, body: str) -> str:
     """
-    Mock function to classify emails using Gemini AI.
-    In a real implementation, this would call the Gemini API.
+    Classify emails using keyword matching and context analysis.
     """
-    # Simulate API call delay
-    import time
-    time.sleep(0.5)
-    
-    # Simple mock logic based on keywords
+    # Convert to lowercase for case-insensitive matching
     email_text = (subject + " " + body).lower()
     
-    if "intern" in email_text or "internship" in email_text:
+    # Security and Alert related keywords
+    security_keywords = ["security", "alert", "warning", "suspicious", "unauthorized", "breach", "hack"]
+    if any(keyword in email_text for keyword in security_keywords):
+        return "Security Alert"
+    
+    # Welcome and Onboarding related keywords
+    welcome_keywords = ["welcome", "get started", "getting started", "onboarding", "new account"]
+    if any(keyword in email_text for keyword in welcome_keywords):
+        return "Welcome"
+    
+    # Notification related keywords
+    notification_keywords = ["notification", "update", "deleted", "removed", "changed", "modified"]
+    if any(keyword in email_text for keyword in notification_keywords):
+        return "Notification"
+    
+    # Meeting related keywords
+    meeting_keywords = ["meeting", "schedule", "appointment", "call", "conference", "discussion"]
+    if any(keyword in email_text for keyword in meeting_keywords):
+        return "Meeting Request"
+    
+    # Internship related keywords
+    internship_keywords = ["intern", "internship", "student", "trainee", "apprentice"]
+    if any(keyword in email_text for keyword in internship_keywords):
         return "Internship"
-    elif "fund" in email_text or "grant" in email_text:
+    
+    # Funding related keywords
+    funding_keywords = ["fund", "grant", "sponsor", "budget", "finance", "payment"]
+    if any(keyword in email_text for keyword in funding_keywords):
         return "Funding"
-    elif "review" in email_text or "paper" in email_text:
+    
+    # Review related keywords
+    review_keywords = ["review", "paper", "article", "manuscript", "publication", "journal"]
+    if any(keyword in email_text for keyword in review_keywords):
         return "Review Request"
-    elif "newsletter" in email_text or "update" in email_text:
+    
+    # Newsletter related keywords
+    newsletter_keywords = ["newsletter", "update", "news", "announcement", "bulletin"]
+    if any(keyword in email_text for keyword in newsletter_keywords):
         return "Newsletter"
-    elif "job" in email_text or "position" in email_text:
+    
+    # Job related keywords
+    job_keywords = ["job", "position", "vacancy", "opening", "career", "employment"]
+    if any(keyword in email_text for keyword in job_keywords):
         return "Job Offer"
-    elif "meeting" in email_text or "schedule" in email_text:
-        return "Meeting Request"
-    elif "collaborate" in email_text or "research" in email_text:
+    
+    # Research collaboration related keywords
+    collaboration_keywords = ["collaborate", "research", "study", "project", "partnership", "team"]
+    if any(keyword in email_text for keyword in collaboration_keywords):
         return "Research Collaboration"
-    else:
-        # Default to Meeting Request if no clear category is found
-        return "Meeting Request"
+    
+    # If no specific category is matched, return "Notification" as default
+    return "Notification"
 
 # Pydantic models
 class EmailRequest(BaseModel):
@@ -128,17 +166,20 @@ async def get_stored_emails(category: Optional[str] = Query(None, description="F
     """
     Get all stored emails, optionally filtered by category.
     Results are sorted by timestamp (newest first).
+    Category filtering is case-insensitive and ignores leading/trailing whitespace.
     """
     try:
-        print(f"\nFetching emails" + (f" with category: {category}" if category else ""))
+        # Normalize the category filter if provided
+        normalized_category = normalize_category(category) if category else None
+        print(f"\nFetching emails" + (f" with category: {normalized_category}" if normalized_category else ""))
         
         # Get all emails using load_emails
         emails = storage.load_emails()
         print(f"Total emails found: {len(emails)}")
         
-        # Filter by category if specified
-        if category:
-            emails = [e for e in emails if e['category'] == category]
+        # Filter by category if specified (case-insensitive)
+        if normalized_category:
+            emails = [e for e in emails if normalize_category(e['category']) == normalized_category]
             print(f"Emails after category filter: {len(emails)}")
         
         return [EmailResponse(**email) for email in emails]
@@ -153,13 +194,8 @@ async def get_stored_emails(category: Optional[str] = Query(None, description="F
 @app.get("/classify-emails", response_model=List[ClassifiedEmail])
 async def classify_latest_emails():
     """
-    Fetch the latest 5 emails and classify each one.
-    
-    Returns:
-        List[ClassifiedEmail]: List of classified emails with their subjects and categories
-        
-    Raises:
-        HTTPException: If fetching or classifying emails fails
+    Fetch the latest 5 emails from Gmail, classify them, and save to database.
+    Skips duplicates and returns only successfully classified and saved emails.
     """
     try:
         # Get latest emails
@@ -167,20 +203,36 @@ async def classify_latest_emails():
         if not emails:
             return []
         
-        # Classify each email
+        # Classify and save each email
         classified_emails = []
         for email in emails:
             try:
+                # Classify the email
                 category = classify_email(email['subject'], email['body'])
                 # Skip if classification returned an error
                 if category.startswith("Error:"):
                     continue
-                classified_emails.append({
-                    "subject": email['subject'],
-                    "category": category
-                })
+                
+                # Prepare email document
+                email_doc = {
+                    "subject": email['subject'].strip(),
+                    "body": email['body'].strip(),
+                    "category": category.strip(),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                
+                # Try to save to database
+                if storage.save_email(email_doc):
+                    classified_emails.append({
+                        "subject": email_doc['subject'],
+                        "category": email_doc['category']
+                    })
+                    print(f"Successfully classified and saved email: {email_doc['subject']}")
+                else:
+                    print(f"Skipped duplicate email: {email_doc['subject']}")
+                    
             except Exception as e:
-                # Skip individual email if classification fails
+                print(f"Error processing email {email['subject']}: {str(e)}")
                 continue
         
         return classified_emails
@@ -195,6 +247,7 @@ async def classify_latest_emails():
 async def get_categories():
     """
     Get the list of all available email categories.
+    Categories are returned in their original case.
     """
     return CATEGORIES
 
