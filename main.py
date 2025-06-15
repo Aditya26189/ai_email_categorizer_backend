@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from storage import storage
 from gmail_client import get_latest_emails
 from utils.llm_utils import summarize_to_bullets
+from classifier import classify_email  # Import the real classifier
 
 # Load environment variables
 load_dotenv()
@@ -41,67 +42,6 @@ def normalize_category(category: str) -> str:
     Normalize category by trimming whitespace and converting to lowercase.
     """
     return category.strip().lower()
-
-# Mock Gemini AI classification function
-def classify_email(subject: str, body: str) -> str:
-    """
-    Classify emails using keyword matching and context analysis.
-    """
-    # Convert to lowercase for case-insensitive matching
-    email_text = (subject + " " + body).lower()
-    
-    # Security and Alert related keywords
-    security_keywords = ["security", "alert", "warning", "suspicious", "unauthorized", "breach", "hack"]
-    if any(keyword in email_text for keyword in security_keywords):
-        return "Security Alert"
-    
-    # Welcome and Onboarding related keywords
-    welcome_keywords = ["welcome", "get started", "getting started", "onboarding", "new account"]
-    if any(keyword in email_text for keyword in welcome_keywords):
-        return "Welcome"
-    
-    # Notification related keywords
-    notification_keywords = ["notification", "update", "deleted", "removed", "changed", "modified"]
-    if any(keyword in email_text for keyword in notification_keywords):
-        return "Notification"
-    
-    # Meeting related keywords
-    meeting_keywords = ["meeting", "schedule", "appointment", "call", "conference", "discussion"]
-    if any(keyword in email_text for keyword in meeting_keywords):
-        return "Meeting Request"
-    
-    # Internship related keywords
-    internship_keywords = ["intern", "internship", "student", "trainee", "apprentice"]
-    if any(keyword in email_text for keyword in internship_keywords):
-        return "Internship"
-    
-    # Funding related keywords
-    funding_keywords = ["fund", "grant", "sponsor", "budget", "finance", "payment"]
-    if any(keyword in email_text for keyword in funding_keywords):
-        return "Funding"
-    
-    # Review related keywords
-    review_keywords = ["review", "paper", "article", "manuscript", "publication", "journal"]
-    if any(keyword in email_text for keyword in review_keywords):
-        return "Review Request"
-    
-    # Newsletter related keywords
-    newsletter_keywords = ["newsletter", "update", "news", "announcement", "bulletin"]
-    if any(keyword in email_text for keyword in newsletter_keywords):
-        return "Newsletter"
-    
-    # Job related keywords
-    job_keywords = ["job", "position", "vacancy", "opening", "career", "employment"]
-    if any(keyword in email_text for keyword in job_keywords):
-        return "Job Offer"
-    
-    # Research collaboration related keywords
-    collaboration_keywords = ["collaborate", "research", "study", "project", "partnership", "team"]
-    if any(keyword in email_text for keyword in collaboration_keywords):
-        return "Research Collaboration"
-    
-    # If no specific category is matched, return "Notification" as default
-    return "Notification"
 
 # Pydantic models
 class EmailRequest(BaseModel):
@@ -288,6 +228,16 @@ async def generate_email_summary(subject: str):
             status_code=500,
             detail=f"Failed to generate summary: {str(e)}"
         )
+    
+@app.get("/health")
+async def health_check():
+    """
+    Simple health check endpoint to verify the API is running.
+    Returns a 200 status code with a success message.
+    """
+    return {"status": "healthy", "message": "API is running"}
+
+
 
 if __name__ == "__main__":
     import uvicorn
