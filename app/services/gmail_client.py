@@ -5,16 +5,17 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from classifier import classify_email
-from storage import storage
-from utils.gmail_parser import extract_email_body
-from utils.llm_utils import summarize_to_bullets
+from app.services.classifier import classify_email
+from app.services.storage import storage
+from app.utils.gmail_parser import extract_email_body
+from app.utils.llm_utils import summarize_to_bullets
 from datetime import datetime
+from loguru import logger
 
 # Gmail API scopes
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = os.getenv('GMAIL_API_SCOPES')
 
-def get_gmail_service():
+async def get_gmail_service():
     """Get authenticated Gmail API service."""
     creds = None
     
@@ -39,7 +40,7 @@ def get_gmail_service():
     # Build and return Gmail service
     return build('gmail', 'v1', credentials=creds)
 
-def get_latest_emails(max_results: int = 10) -> List[Dict]:
+async def get_latest_emails(max_results: int = 10) -> List[Dict]:
     """
     Fetch latest unread emails from Gmail.
     
@@ -51,7 +52,7 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
     """
     try:
         # Get Gmail service
-        service = get_gmail_service()
+        service = await get_gmail_service()
         
         # Get list of unread messages
         results = service.users().messages().list(
@@ -62,7 +63,7 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
         
         messages = results.get('messages', [])
         if not messages:
-            print("No unread messages found.")
+            logger.info("No unread messages found.")
             return []
         
         processed_emails = []
@@ -98,7 +99,7 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
                 # If no email found, use the raw header
                 sender = from_header
                 
-            print(f"📧 Processing email from: {sender}")
+            logger.info(f"📧 Processing email from: {sender}")
             
             # Extract date from email headers
             date_header = next(
@@ -111,29 +112,23 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
                     # Parse the email date header (e.g., "Wed, 13 Mar 2024 15:30:45 +0000")
                     from email.utils import parsedate_to_datetime
                     timestamp = parsedate_to_datetime(date_header).isoformat()
-                    print(f"📅 Email sent date: {timestamp}")
+                    logger.info(f"📅 Email sent date: {timestamp}")
                 except Exception as e:
-                    print(f"⚠️ Error parsing date header: {e}")
+                    logger.warning(f"⚠️ Error parsing date header: {e}")
                     # Fallback to internal date if parsing fails
                     timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
-                    print(f"⚠️ Using internal date instead: {timestamp}")
+                    logger.warning(f"⚠️ Using internal date instead: {timestamp}")
             else:
                 # Fallback to internal date if no date header
                 timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
-                print(f"⚠️ No date header found, using internal date: {timestamp}")
+                logger.warning(f"⚠️ No date header found, using internal date: {timestamp}")
             
             # Extract and decode email body using our parser
             body = extract_email_body(msg['payload'])
             
-            # Check if this email was already processed
-            existing = storage.collection.find_one({
-                "subject": subject,
-                "sender": sender,
-                "timestamp": timestamp
-            })
-            
-            if existing:
-                print(f"⚠️ Skipped duplicate: {subject} from {sender}")
+            # Check if already processed using Gmail ID
+            if await storage.already_classified(message['id']):
+                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender}")
                 continue
             
             # Generate summary for new email
@@ -142,34 +137,34 @@ def get_latest_emails(max_results: int = 10) -> List[Dict]:
             # Classify the email
             category = classify_email(subject, body)
             if category.startswith("Error:"):
-                print(f"❌ Classification failed for '{subject}': {category}")
+                logger.error(f"❌ Classification failed for '{subject}': {category}")
                 continue
             
             # Prepare email data with summary
             email_data = {
+                'gmail_id': message['id'],  # Store Gmail message ID
                 'subject': subject,
                 'body': body,
                 'category': category,
-                'gmail_id': message['id'],
                 'summary': summary,
                 'sender': sender,
                 'timestamp': timestamp
             }
             
             # Save to MongoDB
-            if storage.save_email(email_data):
+            if await storage.save_email(email_data):
                 processed_emails.append(email_data)
-                print(f"✅ Processed and saved: {subject} from {sender}")
+                logger.success(f"✅ Processed and saved: {subject} from {sender}")
             else:
-                print(f"⚠️ Skipped duplicate: {subject}")
+                logger.warning(f"⚠️ Skipped duplicate: {subject}")
         
         return processed_emails
         
     except Exception as e:
-        print(f"❌ Error fetching emails: {str(e)}")
+        logger.error(f"❌ Error fetching emails: {str(e)}")
         return []
 
-def fetch_emails_from_gmail(limit: int = 5) -> List[Dict[str, str]]:
+async def fetch_emails_from_gmail(limit: int = 5) -> List[Dict[str, str]]:
     """
     Fetches the latest `limit` emails from the user's Gmail inbox.
     
@@ -181,7 +176,7 @@ def fetch_emails_from_gmail(limit: int = 5) -> List[Dict[str, str]]:
     """
     try:
         # Get Gmail service
-        service = get_gmail_service()
+        service = await get_gmail_service()
         
         # Get list of messages
         results = service.users().messages().list(
@@ -191,7 +186,7 @@ def fetch_emails_from_gmail(limit: int = 5) -> List[Dict[str, str]]:
         
         messages = results.get('messages', [])
         if not messages:
-            print("No messages found.")
+            logger.info("No messages found.")
             return []
         
         emails = []
@@ -222,18 +217,22 @@ def fetch_emails_from_gmail(limit: int = 5) -> List[Dict[str, str]]:
         return emails
         
     except Exception as e:
-        print(f"Error fetching emails: {str(e)}")
+        logger.error(f"Error fetching emails: {str(e)}")
         return []
 
 if __name__ == "__main__":
-    # Test the email fetching
-    print("Fetching latest unread emails...")
-    emails = get_latest_emails()
-    print(f"\nProcessed {len(emails)} emails.")
+    import asyncio
+    
+    async def main():
+        logger.info("Fetching latest unread emails...")
+        emails = await get_latest_emails()
+        logger.info(f"\nProcessed {len(emails)} emails.")
 
-    print("\nFetching latest emails...")
-    emails = fetch_emails_from_gmail(limit=5)
-    print(f"\nFetched {len(emails)} emails:")
-    for email in emails:
-        print(f"\nSubject: {email['subject']}")
-        print(f"Snippet: {email['snippet']}") 
+        logger.info("\nFetching latest emails...")
+        emails = await fetch_emails_from_gmail(limit=5)
+        logger.info(f"\nFetched {len(emails)} emails:")
+        for email in emails:
+            logger.info(f"\nSubject: {email['subject']}")
+            logger.info(f"Snippet: {email['snippet']}")
+    
+    asyncio.run(main()) 

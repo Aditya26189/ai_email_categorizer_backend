@@ -1,7 +1,8 @@
-from classifier import classify_email
-from storage import storage
+from app.services.classifier import classify_email
+from app.services.storage import storage
+import asyncio
 
-def test_classification_and_storage():
+async def test_classification_and_storage():
     """
     Test the email classification and storage functionality with a sample email.
     """
@@ -26,14 +27,14 @@ def test_classification_and_storage():
     
     print("\nTesting storage...")
     # Save the email
-    if storage.save_email(test_email):
+    if await storage.save_email(test_email):
         print("Email saved successfully!")
     else:
         print("Email was not saved (possibly a duplicate)")
     
     # Load and verify the saved email
     print("\nVerifying saved email...")
-    saved_emails = storage.load_emails()
+    saved_emails = await storage.load_emails()
     found = False
     
     for email in saved_emails:
@@ -49,4 +50,4 @@ def test_classification_and_storage():
         print("Could not find the saved email in storage!")
 
 if __name__ == "__main__":
-    test_classification_and_storage() 
+    asyncio.run(test_classification_and_storage()) 
