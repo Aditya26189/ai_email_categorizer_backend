@@ -1,4 +1,5 @@
 # app/db/user_db.py
+
 from typing import Optional, Dict, Any
 from loguru import logger
 from app.db.base import db
@@ -6,7 +7,6 @@ from motor.motor_asyncio import AsyncIOMotorCollection
 
 class UserDB:
     def __init__(self):
-        """Initialize user database access."""
         self._collection: Optional[AsyncIOMotorCollection] = None
 
     @property
@@ -16,60 +16,28 @@ class UserDB:
         return self._collection
 
     async def init(self):
-        """Initialize the collection connection."""
         self._collection = db.get_collection('users')
 
-    async def _ensure_initialized(self):
-        """Ensure collection is initialized."""
-        if self._collection is None:
-            await self.init()
-
-    async def create_user(self, user_data: Dict[str, Any]) -> bool:
-        """Create a new user in the database."""
+    async def save_user_metadata(self, clerk_user_id: str, data: Dict[str, Any]) -> bool:
+        """Store/update extra info for a Clerk user."""
         try:
-            if self.collection is None:
-                return False
-            result = await self.collection.insert_one(user_data)
-            logger.info(f"✅ Created user: {user_data.get('email')}")
-            return result.inserted_id is not None
-        except Exception as e:
-            logger.error(f"❌ Error creating user: {str(e)}")
-            return False
-
-    async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Get a user by their email."""
-        try:
-            if self.collection is None:
-                return None
-            user = await self.collection.find_one({"email": email})
-            if user:
-                logger.info(f"ℹ️ Found user: {email}")
-            return user
-        except Exception as e:
-            logger.error(f"❌ Error getting user by email: {str(e)}")
-            return None
-
-    async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get a user by their MongoDB ObjectId (as string)."""
-        from bson import ObjectId
-        try:
-            await self._ensure_initialized()
-            return await self.collection.find_one({"_id": ObjectId(user_id)})
-        except Exception as e:
-            logger.error(f"❌ Error getting user by ID: {e}")
-            return None
-
-    async def update_user(self, email: str, updates: Dict[str, Any]) -> bool:
-        """Update user fields."""
-        try:
-            await self._ensure_initialized()
-            result = await self.collection.update_one(
-                {"email": email}, {"$set": updates}
+            await self.collection.update_one(
+                {"clerk_user_id": clerk_user_id},
+                {"$set": data},
+                upsert=True
             )
-            return result.modified_count > 0
+            logger.info(f"✅ Saved metadata for Clerk user: {clerk_user_id}")
+            return True
         except Exception as e:
-            logger.error(f"❌ Error updating user: {e}")
+            logger.error(f"❌ Error saving metadata for Clerk user: {e}")
             return False
 
-# Singleton instance
+    async def get_user_metadata(self, clerk_user_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve stored metadata for a Clerk user."""
+        try:
+            return await self.collection.find_one({"clerk_user_id": clerk_user_id})
+        except Exception as e:
+            logger.error(f"❌ Error getting metadata for Clerk user: {e}")
+            return None
+
 user_db = UserDB()

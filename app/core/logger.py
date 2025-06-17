@@ -1,7 +1,9 @@
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+import json
+from datetime import datetime
 
 from loguru import logger
 
@@ -64,4 +66,83 @@ def setup_logging(
         logging_logger = logging.getLogger(name)
         logging_logger.handlers = [InterceptHandler()]
 
-    logger.info("Logging configured successfully") 
+    logger.info("Logging configured successfully")
+
+def log_request(
+    method: str,
+    path: str,
+    status_code: int,
+    user_id: Optional[str] = None,
+    duration_ms: Optional[float] = None,
+    error: Optional[str] = None
+) -> None:
+    """Log HTTP request details."""
+    log_data = {
+        "method": method,
+        "path": path,
+        "status_code": status_code,
+        "duration_ms": duration_ms,
+    }
+    
+    if user_id:
+        log_data["user_id"] = user_id
+    if error:
+        log_data["error"] = error
+
+    logger.info(f"Request: {json.dumps(log_data)}")
+
+def log_db_operation(
+    operation: str,
+    collection: str,
+    document_id: Optional[str] = None,
+    error: Optional[str] = None
+) -> None:
+    """Log database operations."""
+    log_data = {
+        "operation": operation,
+        "collection": collection,
+    }
+    
+    if document_id:
+        log_data["document_id"] = document_id
+    if error:
+        log_data["error"] = error
+
+    logger.info(f"Database: {json.dumps(log_data)}")
+
+def log_auth_event(
+    event: str,
+    user_id: Optional[str] = None,
+    error: Optional[str] = None
+) -> None:
+    """Log authentication events."""
+    log_data = {
+        "event": event,
+    }
+    
+    if user_id:
+        log_data["user_id"] = user_id
+    if error:
+        log_data["error"] = error
+
+    logger.info(f"Auth: {json.dumps(log_data)}")
+
+def log_email_operation(
+    operation: str,
+    email_id: Optional[str] = None,
+    category: Optional[str] = None,
+    error: Optional[str] = None
+) -> None:
+    """Log email-related operations."""
+    log_data = {
+        "operation": operation,
+    }
+    
+    if email_id:
+        log_data["email_id"] = email_id
+    if category:
+        log_data["category"] = category
+    if error:
+        log_data["error"] = error
+
+    logger.info(f"Email: {json.dumps(log_data)}") 
