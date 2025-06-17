@@ -1,4 +1,4 @@
-from app.services.storage import storage
+from app.db.email_db import storage
 from app.services.classifier import classify_email
 from datetime import datetime
 import asyncio

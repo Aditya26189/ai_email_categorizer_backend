@@ -1,6 +1,64 @@
-# AI Email Categorizer API
+# AI Email Categorizer
 
-A FastAPI-based service that categorizes emails using AI.
+## Project Structure
+```
+app/
+├── core/
+│   ├── __init__.py
+│   ├── config.py          # Application configuration
+│   ├── dependencies.py    # API dependencies
+│   ├── logger.py          # Logging configuration
+│   ├── middleware.py      # Custom middleware
+│   └── oauth.py           # OAuth configuration
+├── models/
+│   ├── __init__.py
+│   └── schema.py          # SQLAlchemy models
+├── routers/
+│   ├── __init__.py
+│   ├── auth/
+│   │   ├── __init__.py
+│   │   ├── routes.py     # Authentication routes
+│   │   ├── services.py   # Auth business logic
+│   │   └── validators.py # Request/response models
+│   ├── email_routes.py   # Email-related endpoints
+│   ├── classify_routes.py # Classification endpoints
+│   └── health_routes.py  # Health check endpoints
+├── services/
+│   ├── __init__.py
+│   ├── classifier.py     # Email classification logic
+│   ├── gmail_client.py   # Gmail API integration
+│   └── storage.py        # Data storage operations
+├── utils/
+│   ├── __init__.py
+│   ├── gmail_parser.py   # Gmail message parsing utilities
+│   └── llm_utils.py      # LLM integration utilities
+└── main.py              # FastAPI application entry point
+```
+
+## Setup
+1. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+2. Set up environment variables in `.env`:
+```
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:8000/auth/callback
+SECRET_KEY=your_secret_key
+MONGODB_URI=your_mongodb_uri
+```
+
+3. Run the application:
+```bash
+uvicorn app.main:app --reload
+```
+
+## API Documentation
+Once the application is running, visit:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
 
 ## Features
 
@@ -47,7 +105,8 @@ GEMINI_API_URL=
 # MongoDB Configuration
 MONGODB_URI=
 MONGODB_DB_NAME=
-MONGODB_COLLECTION_NAME=
+MONGODB_EMAIL_COLLECTION_NAME=
+MONGODB_USERS_COLLECTION_NAME
 
 ```
 
@@ -61,32 +120,6 @@ uvicorn app.main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`
-
-## API Documentation
-
-Once the server is running, visit:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-## Project Structure
-
-```
-ai_email_categorizer/
-├── app/
-│   ├── core/           # Core functionality
-│   │   ├── config.py   # Configuration
-│   │   ├── logger.py   # Logging setup
-│   │   ├── middleware.py # Middleware configuration
-│   │   └── dependencies.py # API dependencies
-│   ├── models/         # Data models
-│   ├── routers/        # API routes
-│   ├── services/       # Business logic
-│   └── utils/          # Utility functions
-├── tests/              # Test files
-├── .env               # Environment variables
-├── requirements.txt   # Dependencies
-└── README.md         # This file
-```
 
 ## Development
 

@@ -6,7 +6,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from app.services.classifier import classify_email
-from app.services.storage import storage
+from app.db.email_db import email_db
 from app.utils.gmail_parser import extract_email_body
 from app.utils.llm_utils import summarize_to_bullets
 from datetime import datetime
@@ -127,7 +127,7 @@ async def get_latest_emails(max_results: int = 10) -> List[Dict]:
             body = extract_email_body(msg['payload'])
             
             # Check if already processed using Gmail ID
-            if await storage.already_classified(message['id']):
+            if await email_db.already_classified(message['id']):
                 logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender}")
                 continue
             
@@ -152,7 +152,7 @@ async def get_latest_emails(max_results: int = 10) -> List[Dict]:
             }
             
             # Save to MongoDB
-            if await storage.save_email(email_data):
+            if await email_db.save_email(email_data):
                 processed_emails.append(email_data)
                 logger.success(f"✅ Processed and saved: {subject} from {sender}")
             else:

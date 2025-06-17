@@ -1,5 +1,5 @@
 from app.services.classifier import classify_email
-from app.services.storage import storage
+from app.db.email_db import storage
 import asyncio
 
 async def test_classification_and_storage():

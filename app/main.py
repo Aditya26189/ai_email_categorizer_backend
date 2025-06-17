@@ -1,10 +1,11 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-
+from app.db.base import db
+from app.db import email_db, user_db
 from app.core.logger import setup_logging
 from app.core.middleware import setup_middleware
 from app.routers import email_routes, classify_routes, health_routes
+from app.routers.auth import auth_routes
 
 # Setup logging
 setup_logging()
@@ -22,13 +23,17 @@ setup_middleware(app)
 logger.info("Middleware configured")
 
 # Include routers
-app.include_router(email_routes.router, prefix="/api/v1")
-app.include_router(classify_routes.router, prefix="/api/v1")
-app.include_router(health_routes.router ,prefix="/api/v1")
+app.include_router(email_routes.router, prefix="/routers/v1")
+app.include_router(classify_routes.router, prefix="/routers/v1")
+app.include_router(health_routes.router, prefix="/routers/v1")
+app.include_router(auth_routes.router, prefix="/routers/v1")
 logger.info("API routes configured")
 
 @app.on_event("startup")
 async def startup_event():
+    await db.connect_db() 
+    await user_db.user_db.init()
+    await email_db.email_db.init()
     logger.info("Application startup complete")
 
 @app.on_event("shutdown")

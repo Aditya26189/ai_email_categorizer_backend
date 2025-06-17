@@ -4,7 +4,7 @@ from datetime import datetime
 from loguru import logger
 
 from app.models.schemas import EmailRequest, EmailResponse, ClassifiedEmail
-from app.services.storage import storage
+from app.db.email_db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.services.classifier import classify_email
 from app.utils.llm_utils import summarize_to_bullets
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/classify", tags=["classification"])
 async def process_emails_background(emails: List[Dict], batch_size: int = 10):
     """
     Process emails in the background.
-    Handles classification, summarization, and storage.
+    Handles classification, summarization, and email_db.
     """
     try:
         total_emails = len(emails)
@@ -27,7 +27,7 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10):
             for email in batch:
                 try:
                     # Skip if already classified
-                    if email.get('gmail_id') and await storage.already_classified(email['gmail_id']):
+                    if email.get('gmail_id') and await email_db.already_classified(email['gmail_id']):
                         logger.info(f"Skipping already classified email: {email.get('gmail_id')}")
                         continue
                     
@@ -50,8 +50,8 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10):
                         "summary": summary
                     }
                     
-                    # Save to storage
-                    if await storage.save_email(email_doc):
+                    # Save to email_db
+                    if await email_db.save_email(email_doc):
                         logger.success(f"Successfully processed and saved email: {email.get('gmail_id')}")
                     else:
                         logger.warning(f"Failed to save email: {email.get('gmail_id')}")
@@ -77,7 +77,7 @@ async def classify_and_store_email(request: EmailRequest):
         logger.info(f"Gmail ID: {request.gmail_id}")
         
         # Check if email already exists
-        if request.gmail_id and await storage.already_classified(request.gmail_id):
+        if request.gmail_id and await email_db.already_classified(request.gmail_id):
             logger.warning(f"Email with Gmail ID {request.gmail_id} already exists")
             raise HTTPException(
                 status_code=409,
@@ -107,8 +107,8 @@ async def classify_and_store_email(request: EmailRequest):
             "summary": summary
         }
         
-        # Save using storage instance
-        if not await storage.save_email(email_doc):
+        # Save using email_db instance
+        if not await email_db.save_email(email_doc):
             logger.warning(f"Failed to save email with Gmail ID {request.gmail_id}")
             raise HTTPException(
                 status_code=500,

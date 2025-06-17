@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 from typing import List
 import os
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 # Load environment variables
 load_dotenv()
@@ -19,7 +20,8 @@ class Settings(BaseSettings):
     # MongoDB Configuration
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
     MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "")
-    MONGODB_COLLECTION_NAME: str = os.getenv("MONGODB_COLLECTION_NAME", "")
+    MONGODB_EMAIL_COLLECTION_NAME: str = os.getenv("MONGODB_EMAIL_COLLECTION_NAME", "")
+    MONGODB_USERS_COLLECTION_NAME: str = os.getenv("MONGODB_USERS_COLLECTION_NAME","")
     
     # Email Categories
     EMAIL_CATEGORIES: List[str] = [
@@ -34,6 +36,20 @@ class Settings(BaseSettings):
         "Education",
         "Other"
     ]
+    
+    # OAuth settings
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID","")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET","")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI","")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL","")
+
+    # Session settings
+    SESSION_SECRET_KEY: str = os.getenv("SESSION_SECRET_KEY","")  # Change this in production
+    
+    @staticmethod
+    def now_utc() -> datetime:
+        """Get current UTC timestamp."""
+        return datetime.now(timezone.utc)
     
     class Config:
         env_file = ".env"

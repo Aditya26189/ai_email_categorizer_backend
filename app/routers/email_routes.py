@@ -4,7 +4,7 @@ from datetime import datetime
 from loguru import logger
 
 from app.models.schemas import EmailResponse, EmailRequest, EmailIdentifier, ClassifiedEmail
-from app.services.storage import storage 
+from app.db.email_db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.utils.llm_utils import summarize_to_bullets
 from app.services.classifier import classify_email
@@ -78,7 +78,7 @@ async def get_emails(
         skip = (page - 1) * limit
         
         # Get total count for pagination info
-        total = await storage.collection.count_documents(query)
+        total = await email_db.collection.count_documents(query)
         
         # Validate if requested page exists
         total_pages = (total + limit - 1) // limit
@@ -89,7 +89,7 @@ async def get_emails(
             )
         
         # Get paginated results
-        cursor = storage.collection.find(
+        cursor = email_db.collection.find(
             query,
             {'_id': 0}
         ).sort('timestamp', -1).skip(skip).limit(limit)
@@ -138,7 +138,7 @@ async def get_categories():
     Get the list of all available email categories.
     Categories are returned in their original case.
     """
-    return await storage.get_all_categories()
+    return await email_db.get_all_categories()
 
 @router.post("/emails/{gmail_id}/re_summary")
 async def generate_new_email_summary(gmail_id: str):
@@ -148,7 +148,7 @@ async def generate_new_email_summary(gmail_id: str):
     """
     try:
         # Find the email
-        email = await storage.get_email_by_gmail_id(gmail_id)
+        email = await email_db.get_email_by_gmail_id(gmail_id)
         if not email:
             logger.warning(f"❌ Email not found with Gmail ID: {gmail_id}")
             raise HTTPException(
@@ -165,7 +165,7 @@ async def generate_new_email_summary(gmail_id: str):
         logger.info(f"Generated summary with {len(new_summary)} bullet points for Gmail ID: {gmail_id}")
         
         # Update the email with new summary
-        await storage.collection.update_one(
+        await email_db.collection.update_one(
             {"gmail_id": gmail_id},
             {"$set": {"summary": new_summary}}
         )
@@ -204,7 +204,7 @@ async def get_emails_by_categories(
     """
     try:
         # Get all categories
-        categories = await storage.get_all_categories()
+        categories = await email_db.get_all_categories()
         if not categories:
             logger.warning("No categories found")
             return {}
@@ -243,7 +243,7 @@ async def get_emails_by_categories(
                     ]
                 
                 # Get total count for this category
-                total = await storage.collection.count_documents(query)
+                total = await email_db.collection.count_documents(query)
                 
                 # Validate if requested page exists
                 total_pages = (total + limit - 1) // limit
@@ -253,7 +253,7 @@ async def get_emails_by_categories(
                     continue
                 
                 # Get paginated results for this category
-                cursor = storage.collection.find(
+                cursor = email_db.collection.find(
                     query,
                     {'_id': 0}
                 ).sort('timestamp', -1).skip(skip).limit(limit)

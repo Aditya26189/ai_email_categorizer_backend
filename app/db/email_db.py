@@ -1,49 +1,35 @@
 import os
 from datetime import datetime
-from typing import List, Dict, Optional
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import ConnectionFailure, OperationFailure, DuplicateKeyError
-from dotenv import load_dotenv
+from typing import List, Dict, Optional, Any
+from pymongo.errors import OperationFailure, DuplicateKeyError
 from loguru import logger
-
-# Load environment variables
-load_dotenv()
+from app.db.base import db
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 class MongoDBStorage:
     def __init__(self):
-        """Initialize MongoDB connection using environment variables."""
-        self.mongodb_uri = os.getenv('MONGODB_URI')
-        self.db_name = os.getenv('MONGODB_DB_NAME') 
-        self.collection_name = os.getenv('MONGODB_COLLECTION_NAME')  
-        
-        if not self.mongodb_uri:
-            raise ValueError("Missing required environment variable: MONGODB_URI")
-        
-        try:
-            # Connect with SSL/TLS settings
-            self.client = AsyncIOMotorClient(
-                self.mongodb_uri,
-                serverSelectionTimeoutMS=5000,  # 5 second timeout
-                retryWrites=True,
-                tls=True,  # Enable TLS/SSL
-                tlsAllowInvalidCertificates=False,  # Don't allow invalid certificates
-                tlsAllowInvalidHostnames=False  # Don't allow invalid hostnames
-            )
-            self.db = self.client[str(self.db_name)]
-            self.collection = self.db[str(self.collection_name)]
-            
-            # Create sparse unique index on Gmail message ID
-            self.collection.create_index("gmail_id", unique=True, sparse=True)
-            
-            logger.info(f"✅ Successfully connected to MongoDB: {self.db_name}.{self.collection_name}")
-        except ConnectionFailure as e:
-            raise ConnectionError(f"Failed to connect to MongoDB: {str(e)}")
-        except Exception as e:
-            raise Exception(f"Unexpected error connecting to MongoDB: {str(e)}")
+        """Initialize email database access."""
+        self._collection: Optional[AsyncIOMotorCollection] = None
+
+    @property
+    def collection(self) -> AsyncIOMotorCollection:
+        if self._collection is None:
+            raise RuntimeError("Collection not initialized. Call init() first.")
+        return self._collection
+
+    async def init(self):
+        """Initialize the collection connection."""
+        self._collection = db.get_collection('emails')
+
+    async def _ensure_initialized(self):
+        """Ensure collection is initialized."""
+        if self._collection is None:
+            await self.init()
 
     async def already_classified(self, gmail_id: str) -> bool:
         """Check if an email with the given Gmail ID has already been processed."""
         try:
+            await self._ensure_initialized()
             return await self.collection.find_one({"gmail_id": gmail_id}) is not None
         except Exception as e:
             logger.error(f"❌ Error checking for existing email: {str(e)}")
@@ -62,6 +48,7 @@ class MongoDBStorage:
             bool: True if email was saved or updated, False if it already existed without update
         """
         try:
+            await self._ensure_initialized()
             # Ensure gmail_id is present for Gmail-sourced emails
             if "gmail_id" not in email_data and "sender" != "Manual Classification":
                 logger.error("❌ Missing gmail_id for Gmail-sourced email")
@@ -107,14 +94,11 @@ class MongoDBStorage:
         """
         Load emails from MongoDB, excluding _id field.
         
-        Args:
-            limit (Optional[int]): Maximum number of emails to return
-            
         Returns:
             List[Dict]: List of email documents
         """
         try:
-            # Find all documents, exclude _id field, sort by timestamp descending
+            await self._ensure_initialized()
             cursor = self.collection.find(
                 {},
                 {'_id': 0}
@@ -139,6 +123,7 @@ class MongoDBStorage:
             Optional[Dict]: Email document if found, None otherwise
         """
         try:
+            await self._ensure_initialized()
             return await self.collection.find_one(
                 {'subject': subject},
                 {'_id': 0}
@@ -155,11 +140,7 @@ class MongoDBStorage:
             List[Dict]: List of email documents sorted by timestamp
         """
         try:
-            # Debug: Print connection info
-            logger.info(f"\nFetching all emails from:")
-            logger.info(f"Database: {self.db_name}")
-            logger.info(f"Collection: {self.collection_name}")
-            
+            await self._ensure_initialized()
             cursor = self.collection.find(
                 {}, 
                 {'_id': 0}
@@ -176,12 +157,12 @@ class MongoDBStorage:
     async def get_emails_by_category(self, category: str) -> List[Dict]:
         """Get all emails for a specific category."""
         try:
+            await self._ensure_initialized()
             cursor = self.collection.find(
                 {"category": category}
             ).sort('timestamp', -1)
             
             emails = await cursor.to_list(length=None)
-            # Convert to EmailResponse format
             return [
                 {
                     "message": "Email retrieved successfully",
@@ -201,19 +182,12 @@ class MongoDBStorage:
     async def get_all_categories(self) -> List[str]:
         """Get all unique categories from the database."""
         try:
+            await self._ensure_initialized()
             categories = await self.collection.distinct("category")
             return categories
         except Exception as e:
             logger.error(f"❌ Error getting categories: {str(e)}")
             return []
-
-    async def close(self):
-        """Close the MongoDB connection."""
-        try:
-            self.client.close()
-            logger.info("✅ MongoDB connection closed")
-        except Exception as e:
-            logger.error(f"❌ Error closing MongoDB connection: {str(e)}")
 
     async def update_missing_summaries(self, batch_size: int = 10) -> int:
         """
@@ -227,6 +201,7 @@ class MongoDBStorage:
             int: Number of emails updated
         """
         try:
+            await self._ensure_initialized()
             from utils.llm_utils import summarize_to_bullets
             
             # Find emails without summaries or with empty summaries
@@ -273,6 +248,7 @@ class MongoDBStorage:
             Optional[Dict]: Email document if found, None otherwise
         """
         try:
+            await self._ensure_initialized()
             return await self.collection.find_one(
                 {'gmail_id': gmail_id},
                 {'_id': 0}
@@ -282,4 +258,4 @@ class MongoDBStorage:
             return None
 
 # Create a singleton instance
-storage = MongoDBStorage() 
+email_db = MongoDBStorage() 
