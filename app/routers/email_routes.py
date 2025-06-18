@@ -34,9 +34,11 @@ async def get_emails(
         q: Search query for subject/body/sender (2-100 chars)
     """
     try:
+        logger.info(f"[EMAILS] Category filter entered: {category}")
         # Initialize empty query
         query = {}
-        query["category"] = category
+        if category is not None:
+            query["category"] = {"$regex": f"^{category}$", "$options": "i"}
         
         # Validate search query if provided
         if q:

@@ -1,38 +1,47 @@
-from fastapi import Request
-from fastapi_clerk_auth import ClerkConfig, ClerkHTTPBearer
-from .config import settings
-from .logger import log_auth_event, logger
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer
+from jose import jwt, jwk
+import requests
+from app.core.config import settings
+from loguru import logger
+from functools import lru_cache
 
-# Configure Clerk
-clerk_config = ClerkConfig(
-    jwks_url=f"https://{settings.CLERK_FRONTEND_API}.clerk.accounts.dev/.well-known/jwks.json",
-    auto_error=True  # Raise errors for missing/invalid tokens
-)
+security = HTTPBearer()
 
-# Create Clerk auth middleware
-clerk_auth = ClerkHTTPBearer(config=clerk_config, add_state=True)
-logger.info("Clerk authentication middleware initialized")
+# Ensure CLERK_ISSUER is a full URL (with https://)
+CLERK_ISSUER = settings.CLERK_FRONTEND_API
+if not CLERK_ISSUER.startswith("http"):
+    CLERK_ISSUER = f"https://{CLERK_ISSUER}"
+JWKS_URL = f"{CLERK_ISSUER}/.well-known/jwks.json"
+AUDIENCE = settings.FRONTEND_URL  # Set this in your .env or config
 
-# Helper function to get user info from request
-async def get_clerk_user(request: Request):
-    """Get the authenticated user's information from the request state."""
+@lru_cache(maxsize=1)
+def get_jwks():
+    return requests.get(JWKS_URL).json()
+
+def get_public_key(token: str):
+    jwks = get_jwks()
+    header = jwt.get_unverified_header(token)
+    for key in jwks["keys"]:
+        if key["kid"] == header["kid"]:
+            return jwk.construct(key, algorithm="RS256")
+    raise Exception("Public key not found")
+
+async def clerk_auth(credentials=Depends(security)):
+    token = credentials.credentials
     try:
-        if not hasattr(request.state, 'clerk_auth'):
-            log_auth_event("token_missing")
-            return None
-        
-        decoded = request.state.clerk_auth.decoded
-        user_id = decoded.get("sub")
-        email = decoded.get("email")
-        
-        log_auth_event("user_authenticated", user_id=user_id)
-        
-        return {
-            "user_id": user_id,
-            "email": email,
-            "first_name": decoded.get("first_name"),
-            "last_name": decoded.get("last_name")
-        }
+        key = get_public_key(token)
+        payload = jwt.decode(
+            token,
+            key=key,
+            algorithms=["RS256"],
+            audience=AUDIENCE,
+            issuer=CLERK_ISSUER,
+        )
+        return payload  # 🟢 Success
     except Exception as e:
-        log_auth_event("token_verification_failed", error=str(e))
-        return None 
+        logger.error(f"JWT validation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Authentication Credentials",
+        )
