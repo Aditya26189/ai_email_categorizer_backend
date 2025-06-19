@@ -34,6 +34,8 @@ async def test_mongodb_storage():
             
         # Add category to email
         email['category'] = category
+        # Add user_id to email
+        email['user_id'] = "user_2ygYPzJWTNMDyyCVV3Rk31U89oV"
         
         # Save the email
         result = await storage.save_email(email)
@@ -41,6 +43,8 @@ async def test_mongodb_storage():
     
     # Test 2: Try to save duplicate
     print("\n🔄 Test 2: Duplicate Check")
+    # Ensure user_id is present for duplicate test
+    test_emails[0]['user_id'] = "user_2ygYPzJWTNMDyyCVV3Rk31U89oV"
     duplicate_result = await storage.save_email(test_emails[0])
     print(f"Attempted to save duplicate: {'Skipped (expected)' if not duplicate_result else 'Error: Should have been skipped'}")
     

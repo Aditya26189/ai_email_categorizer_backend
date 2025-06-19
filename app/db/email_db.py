@@ -5,6 +5,7 @@ from pymongo.errors import OperationFailure, DuplicateKeyError
 from loguru import logger
 from app.db.base import db
 from motor.motor_asyncio import AsyncIOMotorCollection
+import traceback
 
 class MongoDBStorage:
     def __init__(self):
@@ -54,6 +55,12 @@ class MongoDBStorage:
             if "gmail_id" not in email_data:
                 logger.error("❌ Missing gmail_id for Gmail-sourced email")
                 return False
+            # Ensure user_id is present, a string, and not empty after stripping
+            user_id = email_data.get("user_id")
+            if not isinstance(user_id, str) or not user_id.strip():
+                logger.error(f"❌ Missing or invalid user_id for email: {email_data}\nStack trace:\n{traceback.format_stack()}")
+                return False
+            email_data["user_id"] = user_id.strip()
 
             # Check if email with same Gmail ID already exists
             existing = await self.collection.find_one({"gmail_id": email_data["gmail_id"]})

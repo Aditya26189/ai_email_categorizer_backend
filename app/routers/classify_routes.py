@@ -12,36 +12,35 @@ from app.core.clerk import clerk_auth
 
 router = APIRouter(prefix="/classify", tags=["classification"])
 
-async def process_emails_background(emails: List[Dict], batch_size: int = 10):
+async def process_emails_background(emails: List[Dict], batch_size: int = 10, user=None):
     """
     Process emails in the background.
     Handles classification, summarization, and email_db.
     """
     try:
+        if user is None:
+            raise ValueError("User context is required for background email processing.")
+        user_id = user.get("clerk_user_id") or user.get("sub")
         total_emails = len(emails)
-        logger.info(f"🔄 Starting background processing of {total_emails} emails")
-        
+        logger.info(f"\ud83d\udd04 Starting background processing of {total_emails} emails for user_id={user_id}")
         for i in range(0, total_emails, batch_size):
             batch = emails[i:i + batch_size]
             logger.info(f"Processing batch {i//batch_size + 1} of {(total_emails + batch_size - 1)//batch_size}")
-            
             for email in batch:
                 try:
                     # Skip if already classified
                     if email.get('gmail_id') and await email_db.already_classified(email['gmail_id']):
                         logger.info(f"Skipping already classified email: {email.get('gmail_id')}")
                         continue
-                    
                     # Classify the email
                     category = classify_email(email['subject'], email['body'])
                     logger.info(f"Classified email {email.get('gmail_id')} as: {category}")
-                    
                     # Generate summary
                     summary = summarize_to_bullets(email['body'])
                     logger.info(f"Generated summary with {len(summary)} bullet points")
-                    
                     # Prepare email document
                     email_doc = {
+                        "user_id": user_id,
                         "gmail_id": email.get('gmail_id'),
                         "subject": email['subject'],
                         "body": email['body'],
@@ -50,24 +49,20 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10):
                         "sender": email.get('sender', email.get('from', 'Unknown')),
                         "summary": summary
                     }
-                    
                     # Save to email_db
                     if await email_db.save_email(email_doc):
                         logger.success(f"Successfully processed and saved email: {email.get('gmail_id')}")
                     else:
                         logger.warning(f"Failed to save email: {email.get('gmail_id')}")
-                        
                 except Exception as e:
-                    logger.error(f"Error processing email {email.get('gmail_id')}: {str(e)}")
+                    logger.error(f"Error processing email: {str(e)}")
                     continue
-                    
         logger.success(f"✅ Completed background processing of {total_emails} emails")
-        
     except Exception as e:
-        logger.error(f"❌ Background task failed: {str(e)}")
+        logger.error(f"Error in background email processing: {str(e)}")
 
 @router.post("/", response_model=EmailResponse)
-async def classify_and_store_email(request: EmailRequest):
+async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_auth)):
     """
     Classify an email and store it in MongoDB.
     Returns 409 if email with same Gmail ID already exists.
@@ -76,7 +71,7 @@ async def classify_and_store_email(request: EmailRequest):
         logger.info(f"\nProcessing new email:")
         logger.info(f"Subject: {request.subject}")
         logger.info(f"Gmail ID: {request.gmail_id}")
-        
+        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
         # Check if email already exists
         if request.gmail_id and await email_db.already_classified(request.gmail_id):
             logger.warning(f"Email with Gmail ID {request.gmail_id} already exists")
@@ -84,21 +79,18 @@ async def classify_and_store_email(request: EmailRequest):
                 status_code=409,
                 detail="Email with this Gmail ID already exists"
             )
-        
         # Classify the email
         category = classify_email(request.subject, request.body)
         logger.info(f"Classified as: {category}")
-        
         # Generate summary for the email
         summary = summarize_to_bullets(request.body)
         logger.info(f"Generated summary with {len(summary)} bullet points")
-        
         # Get current timestamp in ISO format
         current_time = datetime.utcnow().isoformat()
-        logger.info(f"📅 Timestamp: {current_time}")
-        
+        logger.info(f"\ud83d\udcc5 Timestamp: {current_time}")
         # Prepare email document
         email_doc = {
+            "user_id": clerk_user_id,
             "gmail_id": request.gmail_id,  # Gmail ID is required
             "subject": request.subject,
             "body": request.body,
@@ -107,7 +99,6 @@ async def classify_and_store_email(request: EmailRequest):
             "sender": request.sender or "Manual Classification",
             "summary": summary
         }
-        
         # Save using email_db instance
         if not await email_db.save_email(email_doc):
             logger.warning(f"Failed to save email with Gmail ID {request.gmail_id}")
@@ -115,10 +106,8 @@ async def classify_and_store_email(request: EmailRequest):
                 status_code=500,
                 detail="Failed to save email"
             )
-            
         logger.success(f"Email successfully processed and saved")
         return EmailResponse(**email_doc)
-        
     except HTTPException as e:
         # Re-raise HTTP exceptions
         raise e
@@ -140,13 +129,16 @@ async def classify_latest_emails(
     Returns immediately with the list of emails that will be processed.
     """
     try:
-        clerk_id = user.get("clerk_id") or user.get("sub")
-        emails = await get_latest_emails(clerk_id, 50)  # Fetch more emails than batch size
+        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
+        if not isinstance(clerk_user_id, str) or not clerk_user_id.strip():
+            logger.error(f"No valid Clerk user ID found in token : {user}")
+            raise HTTPException(status_code=400, detail="No valid Clerk user ID found in token.")
+        emails = await get_latest_emails(clerk_user_id, 50)  # Fetch more emails than batch size
         if not emails:
             logger.info("No new emails found to process")
             return []
         logger.info(f"📧 Found {len(emails)} emails to process")
-        background_tasks.add_task(process_emails_background, emails, batch_size)
+        background_tasks.add_task(process_emails_background, emails, batch_size, user)
         logger.info(f"Started background processing with batch size: {batch_size}")
         return [ClassifiedEmail(**email) for email in emails]
     except Exception as e:

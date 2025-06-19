@@ -42,24 +42,24 @@ async def clerk_auth(credentials=Depends(security)):
         )
         logger.info("✅ Clerk JWT verified.")
         # Extract user info from token
-        clerk_id = payload.get("sub")
-        if not clerk_id:
+        clerk_user_id = payload.get("sub")
+        if not clerk_user_id:
             logger.error("No Clerk user ID (sub) in JWT.")
             raise HTTPException(status_code=400, detail="No Clerk user ID found in token.")
         db = get_mongo_client()
-        db_user = await db["users"].find_one({"clerk_user_id": clerk_id})
+        db_user = await db["users"].find_one({"clerk_user_id": clerk_user_id})
         if db_user:
-            logger.info(f"User exists in DB (by clerk_user_id): {clerk_id}")
+            logger.info(f"User exists in DB (by clerk_user_id): {clerk_user_id}")
             return db_user
         # If not found, create minimal user record
         email = payload.get("email")
         user_data = {
-            "clerk_user_id": clerk_id,
+            "clerk_user_id": clerk_user_id,
             "email": email
         }
         await db["users"].insert_one(user_data)
-        db_user = await db["users"].find_one({"clerk_user_id": clerk_id})
-        logger.info(f"New user created: {clerk_id}")
+        db_user = await db["users"].find_one({"clerk_user_id": clerk_user_id})
+        logger.info(f"New user created: {clerk_user_id}")
         return db_user
     except Exception as e:
         logger.error(f"JWT validation failed: {e}")

@@ -107,7 +107,7 @@ def test_categories_endpoint():
 def test_register_user():
     url = "http://localhost:8000/routers/v1/auth/register"
     user_data = {
-        "clerk_id": "user_abc123",
+        "clerk_user_id": "user_abc123",
         "email": "user@example.com",
         "name": "John Doe",
         "picture": "https://example.com/avatar.jpg",
@@ -125,7 +125,7 @@ def test_register_user():
     result = response.json()
     print("\nRegister User Result:")
     print(json.dumps(result, indent=2))
-    for field in ["clerk_id", "email", "name", "picture", "gmail_connected", "gmail_email", "gmail_tokens", "created_at"]:
+    for field in ["clerk_user_id", "email", "name", "picture", "gmail_connected", "gmail_email", "gmail_tokens", "created_at"]:
         assert field in result, f"User response missing {field}"
 
 def test_get_me(token):
@@ -136,7 +136,7 @@ def test_get_me(token):
     result = response.json()
     print("\nGet Me Result:")
     print(json.dumps(result, indent=2))
-    for field in ["clerk_id", "email", "name", "picture", "gmail_connected", "gmail_email", "gmail_tokens", "created_at"]:
+    for field in ["clerk_user_id", "email", "name", "picture", "gmail_connected", "gmail_email", "gmail_tokens", "created_at"]:
         assert field in result, f"User response missing {field}"
 
 def test_update_me(token):

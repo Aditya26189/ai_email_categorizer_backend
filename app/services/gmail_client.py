@@ -159,7 +159,9 @@ async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
                 'status': 'new',  # Default triage status
                 'fetched_at': datetime.utcnow().isoformat(),
             }
-            
+            # Force user_id just before saving and log for debug
+            email_data['user_id'] = user_id
+            logger.debug(f"Saving email with user_id={email_data['user_id']} and gmail_id={email_data['gmail_id']}")
             # Save to MongoDB
             if await email_db.save_email(email_data):
                 processed_emails.append(email_data)

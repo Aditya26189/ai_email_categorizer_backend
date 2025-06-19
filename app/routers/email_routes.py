@@ -8,6 +8,7 @@ from app.db.email_db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.utils.llm_utils import summarize_to_bullets
 from app.services.classifier import classify_email
+from app.core.clerk import clerk_auth
 
 router = APIRouter(prefix="/emails", tags=["emails"])
 
@@ -21,7 +22,8 @@ async def get_emails(
     category: Optional[str] = Query(None, description="Filter by category"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, and sender")
+    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, and sender"),
+    user=Depends(clerk_auth)
 ):
     """
     Get all emails with pagination, search, and filtering.
@@ -34,9 +36,10 @@ async def get_emails(
         q: Search query for subject/body/sender (2-100 chars)
     """
     try:
+        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
         logger.info(f"[EMAILS] Category filter entered: {category}")
-        # Initialize empty query
-        query = {}
+        # Initialize query with user_id filter
+        query = {"user_id": clerk_user_id}
         if category is not None:
             query["category"] = {"$regex": f"^{category}$", "$options": "i"}
         
@@ -192,7 +195,8 @@ async def generate_new_email_summary(gmail_id: str):
 async def get_emails_by_categories(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page per category"),
-    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, and sender")
+    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, and sender"),
+    user=Depends(clerk_auth)
 ):
     """
     Get all emails grouped by their categories.
@@ -205,6 +209,7 @@ async def get_emails_by_categories(
         q: Search query for subject/body/sender (2-100 chars)
     """
     try:
+        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
         # Get all categories
         categories = await email_db.get_all_categories()
         if not categories:
@@ -222,8 +227,8 @@ async def get_emails_by_categories(
         # Get emails for each category
         for category in categories:
             try:
-                # Build query
-                query = {"category": category}
+                # Build query with user_id filter
+                query = {"user_id": clerk_user_id, "category": category}
                 
                 # Add search query if provided
                 if q:

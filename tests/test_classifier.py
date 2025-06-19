@@ -24,6 +24,8 @@ async def test_classification_and_storage():
     
     # Add category to the email dictionary
     test_email['category'] = category
+    # Add user_id to the email dictionary
+    test_email['user_id'] = "user_2ygYPzJWTNMDyyCVV3Rk31U89oV"
     
     print("\nTesting storage...")
     # Save the email

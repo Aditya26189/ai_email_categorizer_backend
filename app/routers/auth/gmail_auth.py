@@ -108,10 +108,10 @@ async def gmail_callback(request: Request, user=Depends(clerk_auth)):
             logger.warning(f"⚠️ No user updated for email: {clerk_email}")
         # Optionally update Clerk public_metadata
         try:
-            clerk_id = user.get("clerk_id") or user.get("sub")
-            if clerk_id and settings.CLERK_SECRET_KEY:
+            clerk_user_id = user.get("clerk_user_id") or user.get("sub")
+            if clerk_user_id and settings.CLERK_SECRET_KEY:
                 resp = requests.patch(
-                    f"https://api.clerk.dev/v1/users/{clerk_id}/metadata",
+                    f"https://api.clerk.dev/v1/users/{clerk_user_id}/metadata",
                     headers={"Authorization": f"Bearer {settings.CLERK_SECRET_KEY}"},
                     json={"public_metadata": {"gmail_connected": True}}
                 )
