@@ -3,7 +3,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 from loguru import logger
 
-from app.models.schemas import Email, EmailRequest, EmailIdentifier, ClassifiedEmail
+from app.models.email import Email, EmailRequest, EmailIdentifier, ClassifiedEmail
 from app.db.email_db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.utils.llm_utils import summarize_to_bullets

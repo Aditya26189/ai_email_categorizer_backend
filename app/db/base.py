@@ -73,3 +73,8 @@ class Database:
 
 # Singleton
 db = Database()
+
+def get_mongo_client():
+    if Database.db is None:
+        raise ConnectionError("MongoDB is not connected.")
+    return Database.db

@@ -1,13 +1,14 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Depends
 from typing import List, Dict
 from datetime import datetime
 from loguru import logger
 
-from app.models.schemas import EmailRequest, EmailResponse, ClassifiedEmail
+from app.models.email import EmailRequest, EmailResponse, ClassifiedEmail
 from app.db.email_db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.services.classifier import classify_email
 from app.utils.llm_utils import summarize_to_bullets
+from app.core.clerk import clerk_auth
 
 router = APIRouter(prefix="/classify", tags=["classification"])
 
@@ -131,35 +132,26 @@ async def classify_and_store_email(request: EmailRequest):
 @router.get("/emails", response_model=List[ClassifiedEmail])
 async def classify_latest_emails(
     background_tasks: BackgroundTasks,
-    batch_size: int = Query(10, ge=1, le=50, description="Number of emails to process in each batch")
+    batch_size: int = Query(10, ge=1, le=50, description="Number of emails to process in each batch"),
+    user=Depends(clerk_auth)
 ):
     """
     Fetch the latest emails from Gmail and start background processing.
     Returns immediately with the list of emails that will be processed.
-    
-    Args:
-        background_tasks: FastAPI background tasks
-        batch_size: Number of emails to process in each batch (1-50)
     """
     try:
-        # Get latest emails
-        emails = await get_latest_emails(50)  # Fetch more emails than batch size
+        clerk_id = user.get("clerk_id") or user.get("sub")
+        emails = await get_latest_emails(clerk_id, 50)  # Fetch more emails than batch size
         if not emails:
             logger.info("No new emails found to process")
             return []
-            
         logger.info(f"📧 Found {len(emails)} emails to process")
-        
-        # Start background processing
         background_tasks.add_task(process_emails_background, emails, batch_size)
         logger.info(f"Started background processing with batch size: {batch_size}")
-        
-        # Return the emails that will be processed
         return [ClassifiedEmail(**email) for email in emails]
-        
     except Exception as e:
         logger.error(f"❌ Failed to start email processing: {str(e)}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Failed to fetch or classify emails: {str(e)}"
         ) 

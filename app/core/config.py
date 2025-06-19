@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Clerk Configuration
     CLERK_FRONTEND_API: str = os.getenv("CLERK_FRONTEND_API", "")
     CLERK_SECRET_KEY: str = os.getenv("CLERK_SECRET_KEY", "")
+    CLERK_WEBHOOK_SECRET: str = os.getenv("CLERK_WEBHOOK_SECRET", "")
     
     # OAuth settings
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID","")

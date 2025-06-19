@@ -40,13 +40,12 @@ async def get_gmail_service():
     # Build and return Gmail service
     return build('gmail', 'v1', credentials=creds)
 
-async def get_latest_emails(max_results: int = 10) -> List[Dict]:
+async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
     """
-    Fetch latest unread emails from Gmail.
-    
+    Fetch latest unread emails from Gmail for a specific user.
     Args:
+        user_id (str): Clerk user ID
         max_results (int): Maximum number of emails to fetch
-        
     Returns:
         List[Dict]: List of email data including subject, body, category, and summary
     """
@@ -142,6 +141,7 @@ async def get_latest_emails(max_results: int = 10) -> List[Dict]:
             
             # Prepare email data with all new schema fields
             email_data = {
+                'user_id': user_id,
                 'gmail_id': message['id'],  # Store Gmail message ID
                 'thread_id': msg.get('threadId'),
                 'history_id': msg.get('historyId'),
@@ -158,7 +158,6 @@ async def get_latest_emails(max_results: int = 10) -> List[Dict]:
                 'is_sensitive': False,  # Set based on your logic if needed
                 'status': 'new',  # Default triage status
                 'fetched_at': datetime.utcnow().isoformat(),
-                # 'user_id': user_id,  # Add user_id if available in context
             }
             
             # Save to MongoDB
@@ -235,7 +234,7 @@ if __name__ == "__main__":
     
     async def main():
         logger.info("Fetching latest unread emails...")
-        emails = await get_latest_emails()
+        emails = await get_latest_emails(user_id="clerk_user_id")
         logger.info(f"\nProcessed {len(emails)} emails.")
 
         logger.info("\nFetching latest emails...")

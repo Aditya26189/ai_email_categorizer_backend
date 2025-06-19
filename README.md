@@ -118,6 +118,8 @@ Start the server:
 ```bash
 uvicorn app.main:app --reload
 ```
+to test the user updating the info 
+choco install ngrok
 
 The API will be available at `http://localhost:8000`
 

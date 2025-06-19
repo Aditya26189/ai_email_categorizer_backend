@@ -38,3 +38,5 @@ pydantic[email]
 
 # Clerk
 fastapi-clerk-auth
+
+svix

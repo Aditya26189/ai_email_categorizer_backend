@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from app.core.clerk import clerk_auth
-from app.db.user_db import user_db
 from app.core.config import settings
 from loguru import logger
+from app.db.base import get_mongo_client
 import os
 import requests
 from google_auth_oauthlib.flow import Flow
@@ -90,17 +90,25 @@ async def gmail_callback(request: Request, user=Depends(clerk_auth)):
         logger.info(f"Fetched Gmail user info: {gmail_email}")
         # Update MongoDB user document
         gmail_data = {
-            "email": gmail_email,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "expires_in": int(expires_in),
+            "gmail_connected": True,
+            "gmail_email": gmail_email,
+            "gmail_tokens": {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "expires_at": int(credentials.expiry.timestamp()) if hasattr(credentials, 'expiry') and credentials.expiry else None
+            },
             "picture": picture
         }
+        db = get_mongo_client()
         clerk_email = user.get("email")
-        await user_db.update_user_gmail(clerk_email, gmail_data)
+        result = await db["users"].update_one({"email": clerk_email}, {"$set": gmail_data})
+        if result.modified_count > 0:
+            logger.info(f"✅ Updated Gmail info for user: {clerk_email}")
+        else:
+            logger.warning(f"⚠️ No user updated for email: {clerk_email}")
         # Optionally update Clerk public_metadata
         try:
-            clerk_id = user.get("sub") or user.get("clerk_id")
+            clerk_id = user.get("clerk_id") or user.get("sub")
             if clerk_id and settings.CLERK_SECRET_KEY:
                 resp = requests.patch(
                     f"https://api.clerk.dev/v1/users/{clerk_id}/metadata",
