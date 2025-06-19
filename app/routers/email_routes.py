@@ -3,7 +3,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 from loguru import logger
 
-from app.models.schemas import EmailResponse, EmailRequest, EmailIdentifier, ClassifiedEmail
+from app.models.schemas import Email, EmailRequest, EmailIdentifier, ClassifiedEmail
 from app.db.email_db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.utils.llm_utils import summarize_to_bullets
@@ -16,7 +16,7 @@ def normalize_category(category: str) -> str:
     return category.lower().strip()
 
 # API Endpoints
-@router.get("/emails", response_model=List[EmailResponse])
+@router.get("/emails", response_model=List[Email])
 async def get_emails(
     category: Optional[str] = Query(None, description="Filter by category"),
     page: int = Query(1, ge=1, description="Page number"),
@@ -122,7 +122,7 @@ async def get_emails(
         }
         
         logger.info(f"✅ Retrieved {len(emails)} emails (page {page} of {total_pages})")
-        return emails
+        return [Email(**email) for email in emails]
         
     except HTTPException as e:
         # Re-raise HTTP exceptions
@@ -188,7 +188,7 @@ async def generate_new_email_summary(gmail_id: str):
             detail=f"Failed to generate summary: {str(e)}"
         )
 
-@router.get("/by-categories", response_model=Dict[str, List[EmailResponse]])
+@router.get("/by-categories", response_model=Dict[str, List[Email]])
 async def get_emails_by_categories(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page per category"),
@@ -271,7 +271,7 @@ async def get_emails_by_categories(
                     if 'summary' not in email:
                         email['summary'] = []
                 
-                result[category] = emails
+                result[category] = [Email(**email) for email in emails]
                 logger.info(f"Retrieved {len(emails)} emails for category: {category}")
                 
             except Exception as e:

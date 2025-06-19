@@ -1,21 +1,115 @@
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Literal, Dict, Any
 from datetime import datetime
-from bson import ObjectId
 
 
 # --- Helpers ---
-class PyObjectId(ObjectId):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
 
-    @classmethod
-    def validate(cls, v):
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid ObjectId")
-        return ObjectId(v)
 
+class Email(BaseModel):
+    id: Optional[str] = Field(alias="_id", default=None)
+
+    # 🧑‍💼 User Identification (Clerk)
+    user_id: str = Field(..., description="Clerk User ID")
+
+    # 📬 Gmail Metadata
+    gmail_id: str = Field(..., description="Unique Gmail message ID")
+    thread_id: Optional[str] = Field(None, description="Gmail thread ID")
+    label_ids: Optional[List[str]] = Field(default_factory=list, description="Gmail label IDs")
+    history_id: Optional[str] = Field(None, description="Gmail history ID for incremental sync")
+
+    # 📩 Email Content
+    sender: EmailStr = Field(..., description="Email sender address")
+    subject: str = Field(..., description="Email subject")
+    body: str = Field(..., description="Plain text body of the email")
+    timestamp: datetime = Field(..., description="Timestamp when email was received")
+
+    # 🧠 AI Metadata
+    category: Optional[str] = Field(None, description="AI-generated category")
+    summary: List[str] = Field(default_factory=list, description="AI-generated summary bullets")
+
+    # 🛡️ Flags and Status
+    is_read: bool = Field(default=False, description="If email was read by user")
+    is_processed: bool = Field(default=False, description="If email was processed by AI")
+    is_sensitive: bool = Field(default=False, description="Marks presence of sensitive content")
+
+    # 🧭 Triage Status
+    status: Literal[
+        "new", "read", "reviewed", "archived", "flagged"
+    ] = Field(default="new", description="Email triage status")
+
+    # 🔄 Sync Info
+    fetched_at: datetime = Field(default_factory=datetime.utcnow, description="When email was fetched")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "user_abc123",
+                "gmail_id": "1853d239248aee99",
+                "thread_id": "1853d239248aee22",
+                "label_ids": ["INBOX", "IMPORTANT"],
+                "history_id": "7892310",
+                "sender": "hr@openai.com",
+                "subject": "Interview Invitation",
+                "body": "Hi, we'd love to invite you for an interview...",
+                "timestamp": "2025-06-16T12:00:00Z",
+                "category": "Job Opportunity",
+                "summary": ["Interview invitation from OpenAI", "Contact details included"],
+                "is_read": True,
+                "is_processed": True,
+                "is_sensitive": False,
+                "status": "reviewed",
+                "fetched_at": "2025-06-16T14:00:00Z"
+            }
+        }
+
+
+class GmailTokens(BaseModel):
+    access_token: str = Field(..., description="Gmail OAuth2 access token")
+    refresh_token: str = Field(..., description="Gmail OAuth2 refresh token")
+    expires_at: int = Field(..., description="Unix timestamp for token expiry")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "access_token": "ya29.a0AfH6S...",
+                "refresh_token": "1//0gL4...",
+                "expires_at": 1720000000
+            }
+        }
+
+
+class User(BaseModel):
+    id: Optional[str] = Field(default=None, alias="_id")
+    clerk_id: str = Field(..., description="Unique user ID from Clerk (user_abc123)")
+    email: EmailStr = Field(..., description="User's email used in Clerk")
+    name: Optional[str] = Field(None, description="Full name of the user")
+    picture: Optional[str] = Field(None, description="Profile picture URL")
+    gmail_connected: bool = Field(default=False, description="Is Gmail connected?")
+    gmail_email: Optional[EmailStr] = Field(None, description="Connected Gmail account")
+    gmail_tokens: Optional[Dict[str, Any]] = None  # access_token, refresh_token, expires_at
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        arbitrary_types_allowed = True
+        populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "_id": "60b8d2952f8fb814c8b5e1b2",
+                "clerk_id": "user_abc123",
+                "email": "user@example.com",
+                "name": "John Doe",
+                "picture": "https://example.com/avatar.jpg",
+                "gmail_connected": True,
+                "gmail_email": "john@gmail.com",
+                "gmail_tokens": {
+                    "access_token": "ya29.a0AfH6S...",
+                    "refresh_token": "1//0gL4...",
+                    "expires_at": 1720000000
+                },
+                "created_at": "2025-06-16T10:20:00Z"
+            }
+        }
 
 
 # --- Email Schemas ---

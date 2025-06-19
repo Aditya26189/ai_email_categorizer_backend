@@ -39,6 +39,7 @@ class MongoDBStorage:
         """
         Save an email to MongoDB if it doesn't already exist.
         If the email exists and force_regenerate_summary is True, update its summary.
+        Now supports new Email schema fields.
         
         Args:
             email_data (dict): Email data including gmail_id, subject, body, category, summary, sender, and timestamp
@@ -50,39 +51,49 @@ class MongoDBStorage:
         try:
             await self._ensure_initialized()
             # Ensure gmail_id is present for Gmail-sourced emails
-            if "gmail_id" not in email_data and "sender" != "Manual Classification":
+            if "gmail_id" not in email_data:
                 logger.error("❌ Missing gmail_id for Gmail-sourced email")
                 return False
 
             # Check if email with same Gmail ID already exists
-            if "gmail_id" in email_data:
-                existing = await self.collection.find_one({"gmail_id": email_data["gmail_id"]})
-                if existing:
-                    # If force_regenerate_summary is True, update the summary
-                    if force_regenerate_summary and "body" in email_data:
-                        from app.utils.llm_utils import summarize_to_bullets
-                        new_summary = summarize_to_bullets(email_data["body"])
-                        await self.collection.update_one(
-                            {"gmail_id": email_data["gmail_id"]},
-                            {"$set": {"summary": new_summary}}
-                        )
-                        return True
-                    return False
-                
+            existing = await self.collection.find_one({"gmail_id": email_data["gmail_id"]})
+            if existing:
+                # If force_regenerate_summary is True, update the summary
+                if force_regenerate_summary and "body" in email_data:
+                    from app.utils.llm_utils import summarize_to_bullets
+                    new_summary = summarize_to_bullets(email_data["body"])
+                    await self.collection.update_one(
+                        {"gmail_id": email_data["gmail_id"]},
+                        {"$set": {"summary": new_summary}}
+                    )
+                    return True
+                return False
+
             # Add timestamp if not present
             if "timestamp" not in email_data:
                 email_data["timestamp"] = datetime.utcnow().isoformat()
-                
-            # Ensure all required fields are present
-            required_fields = ["subject", "body", "category", "summary", "sender", "timestamp"]
-            for field in required_fields:
+
+            # Ensure all required fields for the new Email schema
+            defaults = {
+                "thread_id": None,
+                "label_ids": [],
+                "history_id": None,
+                "category": None,
+                "summary": [],
+                "is_read": False,
+                "is_processed": False,
+                "is_sensitive": False,
+                "status": "new",
+                "fetched_at": datetime.utcnow().isoformat(),
+            }
+            for field, value in defaults.items():
                 if field not in email_data:
-                    email_data[field] = ""  # Default empty string for missing fields
-                
+                    email_data[field] = value
+
             # Insert the email
             await self.collection.insert_one(email_data)
             return True
-            
+
         except DuplicateKeyError:
             logger.warning(f"⚠️ Duplicate email found: {email_data.get('subject', 'Unknown')} from {email_data.get('sender', 'Unknown')}")
             return False
@@ -256,6 +267,12 @@ class MongoDBStorage:
         except Exception as e:
             logger.error(f"❌ Error finding email by Gmail ID: {str(e)}")
             return None
+
+    # Add or update MongoDB indexes for gmail_id and thread_id
+    async def ensure_indexes(self):
+        await self._ensure_initialized()
+        await self.collection.create_index("gmail_id", unique=True, sparse=True)
+        await self.collection.create_index("thread_id", sparse=True)
 
 # Create a singleton instance
 email_db = MongoDBStorage() 

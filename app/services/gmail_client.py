@@ -140,15 +140,25 @@ async def get_latest_emails(max_results: int = 10) -> List[Dict]:
                 logger.error(f"❌ Classification failed for '{subject}': {category}")
                 continue
             
-            # Prepare email data with summary
+            # Prepare email data with all new schema fields
             email_data = {
                 'gmail_id': message['id'],  # Store Gmail message ID
+                'thread_id': msg.get('threadId'),
+                'history_id': msg.get('historyId'),
+                'label_ids': msg.get('labelIds', []),
                 'subject': subject,
                 'body': body,
                 'category': category,
                 'summary': summary,
                 'sender': sender,
-                'timestamp': timestamp
+                'timestamp': timestamp,
+                'internal_date': msg.get('internalDate'),
+                'is_read': False,  # Default, update if you track read status
+                'is_processed': True,  # Mark as processed by AI
+                'is_sensitive': False,  # Set based on your logic if needed
+                'status': 'new',  # Default triage status
+                'fetched_at': datetime.utcnow().isoformat(),
+                # 'user_id': user_id,  # Add user_id if available in context
             }
             
             # Save to MongoDB
