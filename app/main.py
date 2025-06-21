@@ -44,6 +44,15 @@ async def startup_event():
     logger.info("Starting database connections")
     await db.connect_db() 
     await email_db.init()
+    
+    # Clean up expired OAuth states
+    try:
+        from app.services.google_oauth import google_oauth_service
+        await google_oauth_service.cleanup_expired_states()
+        logger.info("✅ Cleaned up expired OAuth states")
+    except Exception as e:
+        logger.warning(f"Could not clean up expired OAuth states: {e}")
+    
     logger.info("Application startup complete")
 
 @app.on_event("shutdown")

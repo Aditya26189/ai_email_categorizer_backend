@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     GMAIL_CREDENTIALS_FILE: str = os.getenv("GMAIL_CREDENTIALS_FILE", "")
     GMAIL_TOKEN_FILE: str = os.getenv("GMAIL_TOKEN_FILE", "")
     GMAIL_API_SCOPES: str = os.getenv("GMAIL_API_SCOPES", "")
+    GMAIL_PROJECT_ID: str = os.getenv("GMAIL_PROJECT_ID", "second-sandbox-463119-k3")
+    GMAIL_WEBHOOK_TOPIC: str = os.getenv("GMAIL_WEBHOOK_TOPIC", "gmail-events")
     
     # Gemini AI Configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
@@ -55,6 +57,11 @@ class Settings(BaseSettings):
     
     # Application settings
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
+    
+    @property
+    def gmail_topic_name(self) -> str:
+        """Get the full Gmail webhook topic name."""
+        return f"projects/{self.GMAIL_PROJECT_ID}/topics/{self.GMAIL_WEBHOOK_TOPIC}"
     
     @staticmethod
     def now_utc() -> datetime:

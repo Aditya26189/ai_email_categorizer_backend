@@ -36,19 +36,20 @@ async def get_oauth_status(user=Depends(clerk_auth)) -> Dict:
 @router.get("/oauth/start")
 async def start_oauth_flow(user=Depends(clerk_auth)) -> Dict:
     """
-    Start the Gmail OAuth flow by generating authorization URL.
+    Start the Gmail OAuth flow by generating authorization URL with server-side state storage.
     
     Returns:
         Dict: Contains auth_url and state for frontend to redirect user
     """
     try:
         clerk_user_id = user.get("clerk_user_id") or user.get("sub")
-        logger.info(f"Starting OAuth flow for user: {clerk_user_id}")
+        logger.info(f"🚀 Starting OAuth flow for user: {clerk_user_id}")
         
         # Check if user already has Gmail connected
         status = await google_oauth_service.check_gmail_connection_status(clerk_user_id)
         
         if status.get("is_connected", False):
+            logger.info(f"ℹ️ User {clerk_user_id} already has Gmail connected")
             return {
                 "already_connected": True,
                 "user_id": clerk_user_id,
@@ -57,17 +58,42 @@ async def start_oauth_flow(user=Depends(clerk_auth)) -> Dict:
         
         # Generate OAuth URL
         auth_url, state = google_oauth_service.generate_auth_url()
+        logger.info(f"📋 OAuth URL Generation:")
+        logger.info(f"  - Generated state: {state}")
+        logger.info(f"  - State length: {len(state)}")
+        logger.info(f"  - Auth URL length: {len(auth_url)}")
+        
+        # Store state server-side for security validation
+        state_stored = await google_oauth_service.store_oauth_state(state, clerk_user_id)
+        
+        if not state_stored:
+            logger.error(f"❌ Failed to store OAuth state for user: {clerk_user_id}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to store OAuth state for security validation"
+            )
+        
+        logger.info(f"✅ OAuth flow started successfully for user: {clerk_user_id}")
+        logger.info(f"📋 OAuth Start Response:")
+        logger.info(f"  - User ID: {clerk_user_id}")
+        logger.info(f"  - State: {state}")
+        logger.info(f"  - State stored: {state_stored}")
+        logger.info(f"  - Already connected: False")
         
         return {
             "already_connected": False,
             "auth_url": auth_url,
-            "state": state,
+            "state": state,  # Frontend can still use this for debugging
             "user_id": clerk_user_id,
-            "message": "OAuth URL generated successfully"
+            "message": "OAuth URL generated successfully with server-side state validation"
         }
         
     except Exception as e:
-        logger.error(f"Error starting OAuth flow: {e}")
+        logger.error(f"❌ Error starting OAuth flow: {e}")
+        logger.error(f"🔍 Error details:")
+        logger.error(f"  - User ID: {clerk_user_id if 'clerk_user_id' in locals() else 'Unknown'}")
+        logger.error(f"  - Error type: {type(e).__name__}")
+        logger.error(f"  - Error message: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to start OAuth flow: {str(e)}"
@@ -107,36 +133,54 @@ async def oauth_callback_post(
     user=Depends(clerk_auth)
 ) -> Dict:
     """
-    Handle OAuth callback from Google (POST method for API calls).
+    Handle OAuth callback from Google with server-side state validation.
     
     Args:
         code: Authorization code from Google
-        state: State parameter for security
+        state: State parameter for security (validated server-side)
         
     Returns:
         Dict: OAuth result with user information
     """
     try:
         clerk_user_id = user.get("clerk_user_id") or user.get("sub")
-        logger.info(f"Processing OAuth callback (POST) for user: {clerk_user_id}")
+        logger.info(f"🔄 Processing OAuth callback (POST) for user: {clerk_user_id}")
+        logger.info(f"📋 OAuth Callback Details:")
+        logger.info(f"  - User ID: {clerk_user_id}")
+        logger.info(f"  - Authorization code: {code[:10]}..." if code else "None")
+        logger.info(f"  - State parameter: {state}")
+        logger.info(f"  - State length: {len(state) if state else 0}")
+        logger.info(f"  - State type: {type(state)}")
         
-        # Handle OAuth callback
+        # Handle OAuth callback with server-side state validation
         result = await google_oauth_service.handle_oauth_callback(
             code=code,
             state=state,
             clerk_user_id=clerk_user_id
         )
         
+        logger.info(f"✅ OAuth callback processing completed successfully")
+        logger.info(f"📋 OAuth Result:")
+        logger.info(f"  - Success: {result.get('success', False)}")
+        logger.info(f"  - Email: {result.get('email', 'None')}")
+        logger.info(f"  - Gmail Connected: {result.get('is_gmail_connected', False)}")
+        
         # Set up Gmail watch for push notifications
         watch_success = await setup_gmail_watch(clerk_user_id)
+        logger.info(f"📡 Gmail watch setup: {'Success' if watch_success else 'Failed'}")
         
         return {
             "success": True,
-            "message": "Gmail connected successfully"
+            "message": "Gmail connected successfully with server-side state validation"
         }
         
     except Exception as e:
-        logger.error(f"Error handling OAuth callback (POST): {e}")
+        logger.error(f"❌ Error handling OAuth callback (POST): {e}")
+        logger.error(f"🔍 Error details:")
+        logger.error(f"  - User ID: {clerk_user_id if 'clerk_user_id' in locals() else 'Unknown'}")
+        logger.error(f"  - State: {state if 'state' in locals() else 'Unknown'}")
+        logger.error(f"  - Error type: {type(e).__name__}")
+        logger.error(f"  - Error message: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"OAuth callback failed: {str(e)}"

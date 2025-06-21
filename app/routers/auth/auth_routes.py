@@ -56,17 +56,21 @@ async def get_me(user=Depends(clerk_auth), request: Request = None):
             logger.error(f"User has no valid email in DB or Clerk token")
             raise HTTPException(status_code=500, detail="User record has invalid email address.")
     
-    # Get Gmail connection status
-    try:
-        gmail_status = await google_oauth_service.check_gmail_connection_status(clerk_user_id)
-        db_user["is_gmail_connected"] = gmail_status.get("is_gmail_connected", False)
-        db_user["gmail_email"] = gmail_status.get("gmail_email")
-        db_user["gmail_connected_at"] = gmail_status.get("gmail_connected_at")
-    except Exception as e:
-        logger.warning(f"Could not fetch Gmail status for user {clerk_user_id}: {e}")
-        db_user["is_gmail_connected"] = False
-        db_user["gmail_email"] = None
-        db_user["gmail_connected_at"] = None
+    # Get Gmail connection status directly from database
+    # This ensures we get the latest status that was updated during OAuth
+    is_gmail_connected = db_user.get("is_gmail_connected", False)
+    gmail_email = db_user.get("gmail_email")
+    gmail_connected_at = db_user.get("gmail_connected_at")
+    
+    logger.info(f"🔍 Gmail connection status for user {clerk_user_id}:")
+    logger.info(f"  - is_gmail_connected: {is_gmail_connected}")
+    logger.info(f"  - gmail_email: {gmail_email}")
+    logger.info(f"  - gmail_connected_at: {gmail_connected_at}")
+    
+    # Ensure the fields are set in the response
+    db_user["is_gmail_connected"] = is_gmail_connected
+    db_user["gmail_email"] = gmail_email
+    db_user["gmail_connected_at"] = gmail_connected_at
     
     return User(**db_user)
 

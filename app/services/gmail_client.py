@@ -16,6 +16,7 @@ from app.services.token_refresh import get_valid_access_token
 from app.services.google_oauth import google_oauth_service
 from app.db.base import get_mongo_client
 from app.core.config import settings
+from app.db.base import db
 
 # Gmail API scopes
 SCOPES = [
@@ -210,10 +211,19 @@ async def setup_gmail_watch(user_id: str):
         # Get Gmail service for user
         service = await get_gmail_service_for_user(user_id)
         
-        # Set up watch on INBOX
+        # Get user's email address from database
+        user = await db.get_collection('users').find_one({"clerk_user_id": user_id})
+        if not user or not user.get("email"):
+            logger.error(f"❌ No email found for user {user_id}")
+            return False
+        
+        user_email = user["email"]
+        
+        # Set up watch on INBOX - Python client doesn't support custom headers
         watch_request = {
             "labelIds": ["INBOX"],
-            "topicName": f"projects/{settings.GOOGLE_PROJECT_ID}/topics/gmail-events"
+            "topicName": settings.gmail_topic_name,
+            "labelFilterAction": "include"
         }
         
         response = service.users().watch(
@@ -221,7 +231,7 @@ async def setup_gmail_watch(user_id: str):
             body=watch_request
         ).execute()
         
-        logger.info(f"✅ Gmail watch set up for user {user_id}: {response}")
+        logger.info(f"✅ Gmail watch set up for user {user_id} ({user_email}): {response}")
         return True
         
     except Exception as e:
