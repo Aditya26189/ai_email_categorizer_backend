@@ -67,3 +67,20 @@ async def clerk_auth(credentials=Depends(security)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Authentication Credentials",
         )
+
+async def verify_clerk_jwt(token: str):
+    try:
+        key = get_public_key(token)
+        payload = jwt.decode(
+            token,
+            key=key,
+            algorithms=["RS256"],
+            audience=AUDIENCE,
+            issuer=CLERK_ISSUER,
+        )
+        return payload
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Authentication Credentials: {e}",
+        )

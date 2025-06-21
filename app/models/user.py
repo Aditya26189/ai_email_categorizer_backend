@@ -16,4 +16,22 @@ class UserInDB(BaseModel):
     last_sign_in: Optional[int] = None
     updated_at: datetime
     created_at: datetime
-    gmail_connected: bool = False 
+    
+    # Gmail connection fields
+    is_gmail_connected: bool = False
+    gmail_email: Optional[str] = None
+    gmail_connected_at: Optional[datetime] = None
+
+class GmailTokens(BaseModel):
+    """Gmail OAuth tokens structure"""
+    access_token: str
+    refresh_token: str
+    expires_at: datetime
+
+class UserGmailStatus(BaseModel):
+    """User's Gmail connection status"""
+    user_id: str
+    is_gmail_connected: bool
+    gmail_email: Optional[str] = None
+    gmail_connected_at: Optional[datetime] = None
+    message: str 

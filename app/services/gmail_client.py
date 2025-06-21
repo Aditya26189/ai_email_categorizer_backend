@@ -11,34 +11,54 @@ from app.utils.gmail_parser import extract_email_body
 from app.utils.llm_utils import summarize_to_bullets
 from datetime import datetime
 from loguru import logger
+import re
+from app.services.token_refresh import get_valid_access_token
+from app.services.google_oauth import google_oauth_service
+from app.db.base import get_mongo_client
+from app.core.config import settings
 
 # Gmail API scopes
-SCOPES = os.getenv('GMAIL_API_SCOPES')
+SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/gmail.labels",
+    "https://www.googleapis.com/auth/gmail.settings.basic"
+]
 
-async def get_gmail_service():
-    """Get authenticated Gmail API service."""
-    creds = None
+async def get_gmail_service_for_user(user_id: str):
+    """
+    Get authenticated Gmail API service for a specific user.
     
-    # Load credentials from token_gmail.json if it exists
-    if os.path.exists('token_gmail.json'):
-        with open('token_gmail.json', 'r') as token:
-            creds = Credentials.from_authorized_user_info(json.load(token))
-    
-    # If credentials are invalid or don't exist, get new ones
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
+    Args:
+        user_id (str): Clerk user ID
         
-        # Save credentials for future use
-        with open('token_gmail.json', 'w') as token:
-            token.write(creds.to_json())
-    
-    # Build and return Gmail service
-    return build('gmail', 'v1', credentials=creds)
+    Returns:
+        Gmail service object
+        
+    Raises:
+        Exception: If authentication fails
+    """
+    try:
+        # Get user credentials from OAuth service
+        credentials = await google_oauth_service.get_user_credentials(user_id)
+        
+        if not credentials:
+            # Try to refresh token
+            access_token = await get_valid_access_token(user_id)
+            
+            # Get updated credentials
+            credentials = await google_oauth_service.get_user_credentials(user_id)
+            
+            if not credentials:
+                raise Exception(f"No valid credentials found for user: {user_id}")
+        
+        # Build and return Gmail service
+        return build('gmail', 'v1', credentials=credentials)
+        
+    except Exception as e:
+        logger.error(f"Error getting Gmail service for user {user_id}: {e}")
+        raise
 
 async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
     """
@@ -50,8 +70,8 @@ async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
         List[Dict]: List of email data including subject, body, category, and summary
     """
     try:
-        # Get Gmail service
-        service = await get_gmail_service()
+        # Get Gmail service for user
+        service = await get_gmail_service_for_user(user_id)
         
         # Get list of unread messages
         results = service.users().messages().list(
@@ -83,22 +103,22 @@ async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
                 '(No Subject)'
             )
             
-            # Extract sender email
+            # Extract sender email and name
             from_header = next(
                 (h['value'] for h in headers if h['name'].lower() == 'from'),
                 ''
             )
-            
-            # Extract email address from the From header
-            sender = from_header
-            if '<' in from_header and '>' in from_header:
-                # Extract email from "Name <email@example.com>"
-                sender = from_header.split('<')[1].split('>')[0]
-            elif '@' not in from_header:
-                # If no email found, use the raw header
-                sender = from_header
-                
-            logger.info(f"📧 Processing email from: {sender}")
+            sender_name = None
+            sender_email = None
+            match = re.match(r'"?(.*?)"?\s*<([^>]+)>', from_header)
+            if match:
+                sender_name = match.group(1).strip() or None
+                sender_email = match.group(2).strip()
+            elif '@' in from_header:
+                sender_email = from_header.strip()
+            else:
+                sender_email = from_header.strip()
+            logger.info(f"📧 Processing email from: {sender_name} <{sender_email}>")
             
             # Extract date from email headers
             date_header = next(
@@ -127,7 +147,7 @@ async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
             
             # Check if already processed using Gmail ID
             if await email_db.already_classified(message['id']):
-                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender}")
+                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
                 continue
             
             # Generate summary for new email
@@ -150,7 +170,8 @@ async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
                 'body': body,
                 'category': category,
                 'summary': summary,
-                'sender': sender,
+                'sender_name': sender_name,
+                'sender_email': sender_email,
                 'timestamp': timestamp,
                 'internal_date': msg.get('internalDate'),
                 'is_read': False,  # Default, update if you track read status
@@ -161,13 +182,13 @@ async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
             }
             # Force user_id just before saving and log for debug
             email_data['user_id'] = user_id
-            logger.debug(f"Saving email with user_id={email_data['user_id']} and gmail_id={email_data['gmail_id']}")
+            logger.debug(f"Saving email with user_id={email_data['user_id']} and gmail_id={email_data['gmail_id']} and sender_email={email_data['sender_email']}")
             # Save to MongoDB
             if await email_db.save_email(email_data):
                 processed_emails.append(email_data)
-                logger.success(f"✅ Processed and saved: {subject} from {sender}")
+                logger.success(f"✅ Processed and saved: {subject} from {sender_name} <{sender_email}>")
             else:
-                logger.warning(f"⚠️ Skipped duplicate: {subject}")
+                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
         
         return processed_emails
         
@@ -175,19 +196,52 @@ async def get_latest_emails(user_id: str, max_results: int = 10) -> List[Dict]:
         logger.error(f"❌ Error fetching emails: {str(e)}")
         return []
 
-async def fetch_emails_from_gmail(limit: int = 5) -> List[Dict[str, str]]:
+async def setup_gmail_watch(user_id: str):
+    """
+    Set up Gmail push notifications for a user.
+    
+    Args:
+        user_id (str): Clerk user ID
+        
+    Returns:
+        bool: True if watch was set up successfully
+    """
+    try:
+        # Get Gmail service for user
+        service = await get_gmail_service_for_user(user_id)
+        
+        # Set up watch on INBOX
+        watch_request = {
+            "labelIds": ["INBOX"],
+            "topicName": f"projects/{settings.GOOGLE_PROJECT_ID}/topics/gmail-events"
+        }
+        
+        response = service.users().watch(
+            userId="me",
+            body=watch_request
+        ).execute()
+        
+        logger.info(f"✅ Gmail watch set up for user {user_id}: {response}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Error setting up Gmail watch for user {user_id}: {e}")
+        return False
+
+async def fetch_emails_from_gmail(user_id: str, limit: int = 5) -> List[Dict[str, str]]:
     """
     Fetches the latest `limit` emails from the user's Gmail inbox.
     
     Args:
+        user_id (str): Clerk user ID
         limit (int): Maximum number of emails to fetch
         
     Returns:
         List[Dict[str, str]]: List of email data with subject and snippet
     """
     try:
-        # Get Gmail service
-        service = await get_gmail_service()
+        # Get Gmail service for user
+        service = await get_gmail_service_for_user(user_id)
         
         # Get list of messages
         results = service.users().messages().list(
@@ -240,7 +294,7 @@ if __name__ == "__main__":
         logger.info(f"\nProcessed {len(emails)} emails.")
 
         logger.info("\nFetching latest emails...")
-        emails = await fetch_emails_from_gmail(limit=5)
+        emails = await fetch_emails_from_gmail(user_id="clerk_user_id", limit=5)
         logger.info(f"\nFetched {len(emails)} emails:")
         for email in emails:
             logger.info(f"\nSubject: {email['subject']}")

@@ -5,7 +5,7 @@ from app.db.base import db
 from app.db import email_db
 from app.core.logger import setup_logging, log_request
 from app.core.middleware import setup_middleware
-from app.routers import email_routes, classify_routes, health_routes
+from app.routers import email_routes, classify_routes, health_routes, webhook, gmail
 from app.routers.auth import auth_routes, clerk_webhook
 from app.core.clerk import clerk_auth
 from app.core.config import settings
@@ -28,16 +28,18 @@ logger.info("Middleware configured")
 # Include routers with Clerk authentication
 app.include_router(email_routes.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
 app.include_router(classify_routes.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
-app.include_router(auth_routes.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
+app.include_router(auth_routes, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
 app.include_router(health_routes.router, prefix="/routers/v1")  # Health check doesn't need auth
-app.include_router(clerk_webhook.router)
+app.include_router(clerk_webhook)
+app.include_router(webhook.router)
+app.include_router(gmail.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
 logger.info("API routes configured")
 
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting database connections")
     await db.connect_db() 
-    await email_db.email_db.init()
+    await email_db.init()
     logger.info("Application startup complete")
 
 @app.on_event("shutdown")

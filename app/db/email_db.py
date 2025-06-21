@@ -62,9 +62,10 @@ class MongoDBStorage:
                 return False
             email_data["user_id"] = user_id.strip()
 
-            # Check if email with same Gmail ID already exists
+            # Check if email with same Gmail ID already exists (duplicate check is ONLY on gmail_id)
             existing = await self.collection.find_one({"gmail_id": email_data["gmail_id"]})
             if existing:
+                logger.warning(f"⚠️ Duplicate email found with gmail_id: {email_data['gmail_id']} (subject: {email_data.get('subject', 'Unknown')})")
                 # If force_regenerate_summary is True, update the summary
                 if force_regenerate_summary and "body" in email_data:
                     from app.utils.llm_utils import summarize_to_bullets
@@ -92,6 +93,8 @@ class MongoDBStorage:
                 "is_sensitive": False,
                 "status": "new",
                 "fetched_at": datetime.utcnow().isoformat(),
+                "sender_name": None,
+                "sender_email": None,
             }
             for field, value in defaults.items():
                 if field not in email_data:
@@ -102,7 +105,7 @@ class MongoDBStorage:
             return True
 
         except DuplicateKeyError:
-            logger.warning(f"⚠️ Duplicate email found: {email_data.get('subject', 'Unknown')} from {email_data.get('sender', 'Unknown')}")
+            logger.warning(f"⚠️ Duplicate email found: {email_data.get('subject', 'Unknown')} from {email_data.get('sender_name', 'Unknown')} <{email_data.get('sender_email', 'Unknown')}>")
             return False
         except Exception as e:
             logger.error(f"❌ Error saving email: {str(e)}")
@@ -188,7 +191,8 @@ class MongoDBStorage:
                     "subject": email.get('subject', ''),
                     "body": email.get('body', ''),
                     "category": email.get('category', ''),
-                    "sender": email.get('sender', ''),
+                    "sender_name": email.get('sender_name', ''),
+                    "sender_email": email.get('sender_email', ''),
                     "timestamp": email.get('timestamp', '')
                 }
                 for email in emails

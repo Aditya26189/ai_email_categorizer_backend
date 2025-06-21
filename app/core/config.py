@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, ClassVar, Optional
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Gmail Configuration
     GMAIL_CREDENTIALS_FILE: str = os.getenv("GMAIL_CREDENTIALS_FILE", "")
     GMAIL_TOKEN_FILE: str = os.getenv("GMAIL_TOKEN_FILE", "")
-    GMAIL_API_SCOPES: str = os.getenv("GMAIL_API_SCOPES")
+    GMAIL_API_SCOPES: str = os.getenv("GMAIL_API_SCOPES", "")
     
     # Gemini AI Configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     # MongoDB Configuration
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
     MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "")
-    MONGODB_EMAIL_COLLECTION_NAME: str = os.getenv("MONGODB_EMAIL_COLLECTION_NAME", "")
-    MONGODB_USERS_COLLECTION_NAME: str = os.getenv("MONGODB_USERS_COLLECTION_NAME","")
+    MONGODB_EMAIL_COLLECTION_NAME: str = os.getenv("MONGODB_EMAIL_COLLECTION_NAME", "emails")
+    MONGODB_USERS_COLLECTION_NAME: str = os.getenv("MONGODB_USERS_COLLECTION_NAME","users")
+    MONGODB_OAUTH_COLLECTION_NAME: str = os.getenv("MONGODB_OAUTH_COLLECTION_NAME", "oauth")
     
     # Email Categories
     EMAIL_CATEGORIES: List[str] = [
@@ -46,10 +47,14 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID","")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET","")
     GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI","")
+    GOOGLE_PROJECT_ID: str = os.getenv("GOOGLE_PROJECT_ID","")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL","")
 
     # Session settings
     SESSION_SECRET_KEY: str = os.getenv("SESSION_SECRET_KEY","")  # Change this in production
+    
+    # Application settings
+    DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
     @staticmethod
     def now_utc() -> datetime:
@@ -58,6 +63,7 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        extra = "ignore"  # Ignore extra fields that don't match our schema
 
 # Create settings instance
 settings = Settings() 

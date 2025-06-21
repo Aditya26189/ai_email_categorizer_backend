@@ -22,7 +22,7 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10, us
             raise ValueError("User context is required for background email processing.")
         user_id = user.get("clerk_user_id") or user.get("sub")
         total_emails = len(emails)
-        logger.info(f"\ud83d\udd04 Starting background processing of {total_emails} emails for user_id={user_id}")
+        logger.info(f"🔄 Starting background processing of {total_emails} emails for user_id={user_id}")
         for i in range(0, total_emails, batch_size):
             batch = emails[i:i + batch_size]
             logger.info(f"Processing batch {i//batch_size + 1} of {(total_emails + batch_size - 1)//batch_size}")
@@ -46,7 +46,8 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10, us
                         "body": email['body'],
                         "category": category,
                         "timestamp": email.get('timestamp', datetime.utcnow().isoformat()),
-                        "sender": email.get('sender', email.get('from', 'Unknown')),
+                        "sender_name": email.get('sender_name'),
+                        "sender_email": email.get('sender_email', email.get('from', 'Unknown')),
                         "summary": summary
                     }
                     # Save to email_db
@@ -96,7 +97,8 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
             "body": request.body,
             "category": category,
             "timestamp": current_time,
-            "sender": request.sender or "Manual Classification",
+            "sender_name": request.sender_name or "Manual Classification",
+            "sender_email": request.sender_email or "Manual Classification",
             "summary": summary
         }
         # Save using email_db instance

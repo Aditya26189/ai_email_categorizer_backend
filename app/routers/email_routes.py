@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Depends
 from typing import List, Optional, Dict
 from datetime import datetime
 from loguru import logger
+import time
 
 from app.models.email import Email, EmailRequest, EmailIdentifier, ClassifiedEmail
 from app.db.email_db import email_db
@@ -22,7 +23,7 @@ async def get_emails(
     category: Optional[str] = Query(None, description="Filter by category"),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, and sender"),
+    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, sender_name, and sender_email"),
     user=Depends(clerk_auth)
 ):
     """
@@ -33,8 +34,9 @@ async def get_emails(
         category: Filter by category (case-insensitive)
         page: Page number (starts at 1)
         limit: Items per page (max 100)
-        q: Search query for subject/body/sender (2-100 chars)
+        q: Search query for subject/body/sender_name/sender_email (2-100 chars)
     """
+    total_start = time.time()
     try:
         clerk_user_id = user.get("clerk_user_id") or user.get("sub")
         logger.info(f"[EMAILS] Category filter entered: {category}")
@@ -56,11 +58,12 @@ async def get_emails(
                     status_code=400,
                     detail="Search query cannot exceed 100 characters"
                 )
-            # Search in subject, body, and sender
+            # Search in subject, body, sender_name, and sender_email
             query["$or"] = [
                 {"subject": {"$regex": q, "$options": "i"}},
                 {"body": {"$regex": q, "$options": "i"}},
-                {"sender": {"$regex": q, "$options": "i"}}
+                {"sender_name": {"$regex": q, "$options": "i"}},
+                {"sender_email": {"$regex": q, "$options": "i"}}
             ]
             logger.info(f"Using search query: {q}")
         
@@ -94,24 +97,26 @@ async def get_emails(
             )
         
         # Get paginated results
+        mongo_start = time.time()
         cursor = email_db.collection.find(
             query,
             {'_id': 0}
         ).sort('timestamp', -1).skip(skip).limit(limit)
-        
         emails = await cursor.to_list(length=None)
+        print("Mongo fetch took", time.time() - mongo_start)
+        
         logger.info(f"Total emails found: {len(emails)}")
         
         # Ensure all emails have required fields
         for email in emails:
-            if 'sender' not in email or not email['sender']:
-                email['sender'] = email.get('from', '')  # Try 'from' field if 'sender' is missing
-                logger.debug(f"Using 'from' field as sender for email: {email.get('subject', 'No subject')}")
-            
+            if 'sender_name' not in email:
+                email['sender_name'] = None
+            if 'sender_email' not in email or not email['sender_email']:
+                email['sender_email'] = email.get('from', '')
+                logger.debug(f"Using 'from' field as sender_email for email: {email.get('subject', 'No subject')}")
             if 'timestamp' not in email:
                 email['timestamp'] = datetime.utcnow().isoformat()
                 logger.warning(f"⚠️ Missing timestamp for {email.get('subject', 'No subject')}, set to: {email['timestamp']}")
-            
             if 'summary' not in email:
                 email['summary'] = []
                 logger.debug(f"Added empty summary for email: {email.get('subject', 'No subject')}")
@@ -125,6 +130,7 @@ async def get_emails(
         }
         
         logger.info(f"✅ Retrieved {len(emails)} emails (page {page} of {total_pages})")
+        print("Total API duration:", time.time() - total_start)
         return [Email(**email) for email in emails]
         
     except HTTPException as e:
@@ -195,7 +201,7 @@ async def generate_new_email_summary(gmail_id: str):
 async def get_emails_by_categories(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=100, description="Items per page per category"),
-    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, and sender"),
+    q: Optional[str] = Query(None, min_length=2, max_length=100, description="Search in subject, body, sender_name, and sender_email"),
     user=Depends(clerk_auth)
 ):
     """
@@ -206,7 +212,7 @@ async def get_emails_by_categories(
     Args:
         page: Page number (starts at 1)
         limit: Items per page per category (max 100)
-        q: Search query for subject/body/sender (2-100 chars)
+        q: Search query for subject/body/sender_name/sender_email (2-100 chars)
     """
     try:
         clerk_user_id = user.get("clerk_user_id") or user.get("sub")
@@ -246,7 +252,8 @@ async def get_emails_by_categories(
                     query["$or"] = [
                         {"subject": {"$regex": q, "$options": "i"}},
                         {"body": {"$regex": q, "$options": "i"}},
-                        {"sender": {"$regex": q, "$options": "i"}}
+                        {"sender_name": {"$regex": q, "$options": "i"}},
+                        {"sender_email": {"$regex": q, "$options": "i"}}
                     ]
                 
                 # Get total count for this category
@@ -269,8 +276,10 @@ async def get_emails_by_categories(
                 
                 # Ensure all emails have required fields
                 for email in emails:
-                    if 'sender' not in email or not email['sender']:
-                        email['sender'] = email.get('from', '')
+                    if 'sender_name' not in email:
+                        email['sender_name'] = None
+                    if 'sender_email' not in email or not email['sender_email']:
+                        email['sender_email'] = email.get('from', '')
                     if 'timestamp' not in email:
                         email['timestamp'] = datetime.utcnow().isoformat()
                     if 'summary' not in email:

@@ -9,7 +9,8 @@ class Email(BaseModel):
     thread_id: Optional[str] = Field(None, description="Gmail thread ID")
     label_ids: Optional[List[str]] = Field(default_factory=list, description="Gmail label IDs")
     history_id: Optional[str] = Field(None, description="Gmail history ID for incremental sync")
-    sender: EmailStr = Field(..., description="Email sender address")
+    sender_name: Optional[str] = Field(None, description="Sender's display name")
+    sender_email: EmailStr = Field(..., description="Sender's email address")
     subject: str = Field(..., description="Email subject")
     body: str = Field(..., description="Plain text body of the email")
     timestamp: datetime = Field(..., description="Timestamp when email was received")
@@ -30,7 +31,8 @@ class Email(BaseModel):
                 "thread_id": "1853d239248aee22",
                 "label_ids": ["INBOX", "IMPORTANT"],
                 "history_id": "7892310",
-                "sender": "hr@openai.com",
+                "sender_name": "John Doe",
+                "sender_email": "hr@openai.com",
                 "subject": "Interview Invitation",
                 "body": "Hi, we'd love to invite you for an interview...",
                 "timestamp": "2025-06-16T12:00:00Z",
@@ -58,13 +60,15 @@ class GmailTokens(BaseModel):
         }
 
 class EmailIdentifier(BaseModel):
-    sender: str = Field(..., description="Email sender address")
+    sender_name: Optional[str] = Field(None, description="Sender's display name")
+    sender_email: str = Field(..., description="Sender's email address")
     subject: str = Field(..., description="Email subject line")
     timestamp: datetime = Field(..., description="Email timestamp")
     class Config:
         json_schema_extra = {
             "example": {
-                "sender": "john.doe@example.com",
+                "sender_name": "John Doe",
+                "sender_email": "john.doe@example.com",
                 "subject": "Meeting Request: Project Kickoff",
                 "timestamp": "2024-02-20T12:00:00"
             }
@@ -74,12 +78,14 @@ class EmailRequest(BaseModel):
     gmail_id: Optional[str] = Field(None, description="Gmail message ID for Gmail-sourced emails")
     subject: str = Field(..., description="Email subject")
     body: str = Field(..., description="Email body content")
-    sender: Optional[str] = Field(None, description="Email sender")
+    sender_name: Optional[str] = Field(None, description="Sender's display name")
+    sender_email: Optional[str] = Field(None, description="Sender's email address")
     class Config:
         json_schema_extra = {
             "example": {
                 "gmail_id": "587289",
-                "sender": "john.doe@example.com",
+                "sender_name": "John Doe",
+                "sender_email": "john.doe@example.com",
                 "subject": "Meeting Request: Project Kickoff",
                 "body": "Hi Team, I'd like to schedule a meeting...",
                 "timestamp": "2024-02-20T12:00:00"
@@ -92,13 +98,15 @@ class ClassifiedEmail(BaseModel):
     body: str = Field(..., description="Email body content")
     category: str = Field(..., description="AI-classified category")
     summary: List[str] = Field(default_factory=list, description="AI-generated bullet point summary")
-    sender: str = Field(..., description="Email sender")
+    sender_name: Optional[str] = Field(None, description="Sender's display name")
+    sender_email: str = Field(..., description="Sender's email address")
     timestamp: datetime = Field(..., description="When the email was processed")
     class Config:
         json_schema_extra = {
             "example": {
                 "gmail_id": "587289",
-                "sender": "john.doe@example.com",
+                "sender_name": "John Doe",
+                "sender_email": "john.doe@example.com",
                 "subject": "Meeting Request: Project Kickoff",
                 "body": "Hi Team, I'd like to schedule a meeting...",
                 "category": "Meeting Request",
@@ -116,14 +124,16 @@ class EmailResponse(BaseModel):
     body: str = Field(..., description="Email body content")
     category: str = Field(..., description="AI-classified category")
     summary: List[str] = Field(default_factory=list, description="AI-generated bullet point summary")
-    sender: str = Field(..., description="Email sender")
+    sender_name: Optional[str] = Field(None, description="Sender's display name")
+    sender_email: str = Field(..., description="Sender's email address")
     timestamp: str = Field(..., description="When the email was processed")
     message: Optional[str] = Field(None, description="Response message")
     class Config:
         json_schema_extra = {
             "example": {
                 "gmail_id": "587289",
-                "sender": "john.doe@example.com",
+                "sender_name": "John Doe",
+                "sender_email": "john.doe@example.com",
                 "subject": "Meeting Request: Project Kickoff",
                 "body": "Hi Team, I'd like to schedule a meeting...",
                 "category": "Meeting Request",
@@ -146,7 +156,8 @@ class EmailListResponse(BaseModel):
                 "emails": [
                     {
                         "gmail_id": "587289",
-                        "sender": "john.doe@example.com",
+                        "sender_name": "John Doe",
+                        "sender_email": "john.doe@example.com",
                         "subject": "Meeting Request: Project Kickoff",
                         "body": "Hi Team, I'd like to schedule a meeting...",
                         "category": "Meeting Request",
@@ -159,7 +170,8 @@ class EmailListResponse(BaseModel):
                     },
                     {
                         "gmail_id": "587290",
-                        "sender": "jane.smith@example.com",
+                        "sender_name": "Jane Smith",
+                        "sender_email": "jane.smith@example.com",
                         "subject": "Project Update: Q1 Review",
                         "body": "Here's the latest update on our project...",
                         "category": "Project Update",

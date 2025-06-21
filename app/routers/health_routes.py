@@ -4,7 +4,7 @@ from datetime import datetime
 import httpx
 from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
-from app.services.gmail_client import get_gmail_service
+from app.services.gmail_client import get_gmail_service_for_user
 
 router = APIRouter(tags=["health"])
 
@@ -43,14 +43,25 @@ async def check_mongodb():
 async def check_gmail_api():
     """Check Gmail API connectivity and quota status."""
     try:
-        service = await get_gmail_service()
+        # For health check, we'll just verify the OAuth configuration
+        # since we need a user_id for the actual Gmail service
+        if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+            return {
+                "status": "unhealthy",
+                "details": {
+                    "error": "Gmail OAuth credentials not configured",
+                    "connection": "disconnected"
+                }
+            }
         
         return {
             "status": "healthy",
             "details": {
-                "connection": "connected",
-                }
+                "connection": "configured",
+                "oauth_configured": True,
+                "client_id": settings.GOOGLE_CLIENT_ID[:10] + "..." if settings.GOOGLE_CLIENT_ID else None
             }
+        }
     except Exception as e:
         logger.error(f"Gmail API health check failed: {str(e)}")
         return {
