@@ -78,3 +78,16 @@ def get_mongo_client():
     if Database.db is None:
         raise ConnectionError("MongoDB is not connected.")
     return Database.db
+
+# Add user historyId helpers
+async def get_user_history_id(clerk_user_id: str) -> str:
+    user = await db.get_collection('users').find_one({"clerk_user_id": clerk_user_id})
+    if user:
+        return user.get("last_history_id")
+    return None
+
+async def set_user_history_id(clerk_user_id: str, history_id: str):
+    await db.get_collection('users').update_one(
+        {"clerk_user_id": clerk_user_id},
+        {"$set": {"last_history_id": history_id}}
+    )
