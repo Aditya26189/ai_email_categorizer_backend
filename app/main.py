@@ -7,6 +7,8 @@ from app.core.logger import setup_logging, log_request
 from app.core.middleware import setup_middleware
 from app.routers import email_routes, classify_routes, health_routes, webhook, gmail
 from app.routers.auth import auth_routes, clerk_webhook
+from app.routers.auth_callback import router as auth_callback_router
+from app.routers.oauth_callback import router as oauth_callback_router
 from app.core.clerk import clerk_auth
 from app.core.config import settings
 
@@ -33,6 +35,8 @@ app.include_router(health_routes.router, prefix="/routers/v1")  # Health check d
 app.include_router(clerk_webhook)
 app.include_router(webhook.router)
 app.include_router(gmail.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
+app.include_router(auth_callback_router)  # No prefix - handles /auth/callback directly
+app.include_router(oauth_callback_router)  # No prefix - handles /routers/v1/gmail/oauth/callback directly
 logger.info("API routes configured")
 
 @app.on_event("startup")

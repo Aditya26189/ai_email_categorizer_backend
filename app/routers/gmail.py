@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Query, Depends, Body, Response
+from fastapi.responses import RedirectResponse
 from typing import Dict
 from loguru import logger
 from app.services.google_oauth import google_oauth_service
 from app.services.gmail_client import setup_gmail_watch
 from app.core.clerk import clerk_auth
+from app.core.config import settings
 
 router = APIRouter(prefix="/gmail", tags=["gmail"])
 
@@ -96,50 +98,6 @@ async def get_oauth_url(user=Depends(clerk_auth)) -> Dict:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to generate OAuth URL: {str(e)}"
-        )
-
-@router.get("/oauth/callback")
-async def oauth_callback(
-    code: str = Query(..., description="Authorization code from Google"),
-    state: str = Query(..., description="State parameter for security"),
-    user=Depends(clerk_auth)
-) -> Dict:
-    """
-    Handle OAuth callback from Google (GET method for browser redirects).
-    
-    Args:
-        code: Authorization code from Google
-        state: State parameter for security
-        
-    Returns:
-        Dict: OAuth result with user information
-    """
-    try:
-        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
-        logger.info(f"Processing OAuth callback for user: {clerk_user_id}")
-        
-        # Handle OAuth callback
-        result = await google_oauth_service.handle_oauth_callback(
-            code=code,
-            state=state,
-            clerk_user_id=clerk_user_id
-        )
-        
-        # Set up Gmail watch for push notifications
-        watch_success = await setup_gmail_watch(clerk_user_id)
-        
-        return {
-            "success": True,
-            "oauth_result": result,
-            "gmail_watch_setup": watch_success,
-            "message": "Gmail integration completed successfully"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error handling OAuth callback: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"OAuth callback failed: {str(e)}"
         )
 
 @router.post("/callback")

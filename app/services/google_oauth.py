@@ -133,19 +133,17 @@ class GoogleOAuthService:
             flow.fetch_token(code=code)
             credentials = flow.credentials
             
-            # Extract user info from ID token
-            id_info = jwt.decode(
-                credentials.id_token,
-                options={"verify_signature": False}
-            )
+            # Get user info from Google API instead of decoding JWT
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
             
             # Prepare credentials data for storage
             creds_data = {
                 "user_id": clerk_user_id,
-                "google_user_id": id_info.get("sub"),
-                "email": id_info.get("email"),
-                "name": id_info.get("name"),
-                "picture": id_info.get("picture"),
+                "google_user_id": user_info.get("id"),
+                "email": user_info.get("email"),
+                "name": user_info.get("name"),
+                "picture": user_info.get("picture"),
                 "access_token": credentials.token,
                 "refresh_token": credentials.refresh_token,
                 "expires_at": (datetime.utcnow() + timedelta(seconds=credentials.expiry.timestamp() - datetime.utcnow().timestamp())).isoformat() if credentials.expiry else None,
@@ -175,7 +173,7 @@ class GoogleOAuthService:
                 {
                     "$set": {
                         "is_gmail_connected": True,
-                        "gmail_email": id_info.get("email"),
+                        "gmail_email": user_info.get("email"),
                         "gmail_connected_at": datetime.utcnow().isoformat(),
                         "updated_at": datetime.utcnow().isoformat()
                     }
@@ -188,8 +186,8 @@ class GoogleOAuthService:
             return {
                 "success": True,
                 "user_id": clerk_user_id,
-                "email": id_info.get("email"),
-                "name": id_info.get("name"),
+                "email": user_info.get("email"),
+                "name": user_info.get("name"),
                 "scopes": credentials.scopes,
                 "is_gmail_connected": True
             }

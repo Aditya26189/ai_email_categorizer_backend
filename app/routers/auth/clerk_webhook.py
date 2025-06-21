@@ -5,7 +5,7 @@ import logging
 
 router = APIRouter()
 
-@router.post("/webhooks/clerk")
+@router.post("/webhook/clerk")
 async def clerk_webhook(request: Request):
     try:
         payload = await request.json()

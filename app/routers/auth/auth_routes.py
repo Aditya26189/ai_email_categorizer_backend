@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Request, HTTPException, Depends, Body
 from loguru import logger
-from app.core.clerk import clerk_auth
+from app.core.clerk import clerk_auth, verify_clerk_jwt
 from app.core.logger import log_request, log_auth_event
 from app.models.user import UserInDB as User
 from app.db.base import get_mongo_client
 from app.services.google_oauth import google_oauth_service
+from datetime import datetime
 
 router = APIRouter(tags=["auth"])
 
 @router.get("/me", response_model=User)
-async def get_me(user=Depends(clerk_auth)):
+async def get_me(user=Depends(clerk_auth), request: Request = None):
     """
     Get current user profile with Gmail connection status.
     
@@ -29,10 +30,31 @@ async def get_me(user=Depends(clerk_auth)):
     if db_user.get("_id") is not None:
         db_user["_id"] = str(db_user["_id"])
     
+    # Get email from Clerk JWT token
+    auth_header = request.headers.get("authorization") if request else None
+    clerk_email = None
+    if auth_header and auth_header.startswith("Bearer "):
+        try:
+            token = auth_header.split(" ")[1]
+            jwt_payload = await verify_clerk_jwt(token)
+            clerk_email = jwt_payload.get("email")
+        except Exception as e:
+            logger.warning(f"Could not extract email from JWT: {e}")
+    
     email = db_user.get("email")
-    if not email or "@" not in email:
-        logger.error(f"User in DB has invalid email: {email}")
-        raise HTTPException(status_code=500, detail="User record has invalid email address.")
+    if not email or email is None or "@" not in str(email):
+        logger.warning(f"User in DB has invalid email: {email}, using Clerk email as fallback")
+        if clerk_email and "@" in clerk_email:
+            # Update the user record with the Clerk email
+            await db["users"].update_one(
+                {"clerk_user_id": clerk_user_id},
+                {"$set": {"email": clerk_email, "updated_at": datetime.utcnow().isoformat()}}
+            )
+            db_user["email"] = clerk_email
+            logger.info(f"Updated user email from Clerk: {clerk_email}")
+        else:
+            logger.error(f"User has no valid email in DB or Clerk token")
+            raise HTTPException(status_code=500, detail="User record has invalid email address.")
     
     # Get Gmail connection status
     try:
