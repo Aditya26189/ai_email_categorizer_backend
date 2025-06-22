@@ -25,7 +25,9 @@ class MongoDBStorage:
     async def _ensure_initialized(self):
         """Ensure collection is initialized."""
         if self._collection is None:
+            logger.info("Email database not initialized, initializing now...")
             await self.init()
+            logger.info("✅ Email database initialization completed")
 
     async def already_classified(self, gmail_id: str) -> bool:
         """Check if an email with the given Gmail ID has already been processed."""
@@ -188,6 +190,8 @@ class MongoDBStorage:
                 {
                     "message": "Email retrieved successfully",
                     "file_path": str(email['_id']),
+                    "gmail_id": email.get('gmail_id', ''),
+                    "gmail_url": email.get('gmail_url') or f"https://mail.google.com/mail/u/0/#inbox/{email.get('gmail_id', '')}",
                     "subject": email.get('subject', ''),
                     "body": email.get('body', ''),
                     "category": email.get('category', ''),
@@ -286,4 +290,4 @@ class MongoDBStorage:
         await self.collection.create_index("thread_id", sparse=True)
 
 # Create a singleton instance
-email_db = MongoDBStorage() 
+# email_db = MongoDBStorage()  # Removed - instance is created in __init__.py 

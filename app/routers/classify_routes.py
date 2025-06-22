@@ -4,7 +4,7 @@ from datetime import datetime
 from loguru import logger
 
 from app.models.email import EmailRequest, EmailResponse, ClassifiedEmail
-from app.db.email_db import email_db
+from app.db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.services.classifier import classify_email
 from app.utils.llm_utils import summarize_to_bullets

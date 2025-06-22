@@ -5,7 +5,7 @@ from loguru import logger
 import time
 
 from app.models.email import Email, EmailRequest, EmailIdentifier, ClassifiedEmail
-from app.db.email_db import email_db
+from app.db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.utils.llm_utils import summarize_to_bullets
 from app.services.classifier import classify_email
@@ -120,6 +120,10 @@ async def get_emails(
             if 'summary' not in email:
                 email['summary'] = []
                 logger.debug(f"Added empty summary for email: {email.get('subject', 'No subject')}")
+            # Ensure gmail_url is present
+            if 'gmail_url' not in email and 'gmail_id' in email:
+                email['gmail_url'] = f"https://mail.google.com/mail/u/0/#inbox/{email['gmail_id']}"
+                logger.debug(f"Generated gmail_url for email: {email.get('subject', 'No subject')}")
         
         # Add pagination info to response headers
         headers = {
@@ -284,6 +288,10 @@ async def get_emails_by_categories(
                         email['timestamp'] = datetime.utcnow().isoformat()
                     if 'summary' not in email:
                         email['summary'] = []
+                    # Ensure gmail_url is present
+                    if 'gmail_url' not in email and 'gmail_id' in email:
+                        email['gmail_url'] = f"https://mail.google.com/mail/u/0/#inbox/{email['gmail_id']}"
+                        logger.debug(f"Generated gmail_url for email: {email.get('subject', 'No subject')}")
                 
                 result[category] = [Email(**email) for email in emails]
                 logger.info(f"Retrieved {len(emails)} emails for category: {category}")

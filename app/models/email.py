@@ -6,6 +6,7 @@ class Email(BaseModel):
     id: Optional[str] = Field(alias="_id", default=None)
     user_id: str = Field(..., description="Clerk User ID")
     gmail_id: str = Field(..., description="Unique Gmail message ID")
+    gmail_url: Optional[str] = Field(None, description="Direct link to view email in Gmail")
     thread_id: Optional[str] = Field(None, description="Gmail thread ID")
     label_ids: Optional[List[str]] = Field(default_factory=list, description="Gmail label IDs")
     history_id: Optional[str] = Field(None, description="Gmail history ID for incremental sync")
@@ -28,6 +29,7 @@ class Email(BaseModel):
             "example": {
                 "user_id": "user_abc123",
                 "gmail_id": "1853d239248aee99",
+                "gmail_url": "https://mail.google.com/mail/u/0/#inbox/1853d239248aee99",
                 "thread_id": "1853d239248aee22",
                 "label_ids": ["INBOX", "IMPORTANT"],
                 "history_id": "7892310",
@@ -94,6 +96,7 @@ class EmailRequest(BaseModel):
 
 class ClassifiedEmail(BaseModel):
     gmail_id: Optional[str] = Field(None, description="Gmail message ID")
+    gmail_url: Optional[str] = Field(None, description="Direct link to view email in Gmail")
     subject: str = Field(..., description="Email subject")
     body: str = Field(..., description="Email body content")
     category: str = Field(..., description="AI-classified category")
@@ -105,6 +108,7 @@ class ClassifiedEmail(BaseModel):
         json_schema_extra = {
             "example": {
                 "gmail_id": "587289",
+                "gmail_url": "https://mail.google.com/mail/u/0/#inbox/587289",
                 "sender_name": "John Doe",
                 "sender_email": "john.doe@example.com",
                 "subject": "Meeting Request: Project Kickoff",
@@ -120,6 +124,7 @@ class ClassifiedEmail(BaseModel):
 
 class EmailResponse(BaseModel):
     gmail_id: Optional[str] = Field(None, description="Gmail message ID")
+    gmail_url: Optional[str] = Field(None, description="Direct link to view email in Gmail")
     subject: str = Field(..., description="Email subject")
     body: str = Field(..., description="Email body content")
     category: str = Field(..., description="AI-classified category")
@@ -132,6 +137,7 @@ class EmailResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "gmail_id": "587289",
+                "gmail_url": "https://mail.google.com/mail/u/0/#inbox/587289",
                 "sender_name": "John Doe",
                 "sender_email": "john.doe@example.com",
                 "subject": "Meeting Request: Project Kickoff",

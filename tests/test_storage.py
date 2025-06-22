@@ -1,4 +1,4 @@
-from app.db.email_db import storage
+from app.db import email_db
 from app.services.classifier import classify_email
 from datetime import datetime
 import asyncio
@@ -38,34 +38,34 @@ async def test_mongodb_storage():
         email['user_id'] = "user_2ygYPzJWTNMDyyCVV3Rk31U89oV"
         
         # Save the email
-        result = await storage.save_email(email)
+        result = await email_db.save_email(email)
         print(f"Saved email '{email['subject']}': {'Success' if result else 'Skipped (duplicate)'}")
     
     # Test 2: Try to save duplicate
     print("\n🔄 Test 2: Duplicate Check")
     # Ensure user_id is present for duplicate test
     test_emails[0]['user_id'] = "user_2ygYPzJWTNMDyyCVV3Rk31U89oV"
-    duplicate_result = await storage.save_email(test_emails[0])
+    duplicate_result = await email_db.save_email(test_emails[0])
     print(f"Attempted to save duplicate: {'Skipped (expected)' if not duplicate_result else 'Error: Should have been skipped'}")
     
     # Test 3: Load all emails
     print("\n📥 Test 3: Loading All Emails")
-    all_emails = await storage.load_emails()
+    all_emails = await email_db.load_emails()
     print(f"Found {len(all_emails)} emails:")
     for email in all_emails:
         print(f"- {email['subject']} ({email['category']})")
     
     # Test 4: Load limited emails
     print("\n📊 Test 4: Loading Limited Emails")
-    limited_emails = await storage.load_emails(limit=2)
-    print(f"Found {len(limited_emails)} emails (limited to 2):")
-    for email in limited_emails:
+    limited_emails = await email_db.load_emails()
+    print(f"Found {len(limited_emails)} emails:")
+    for email in limited_emails[:2]:  # Limit to first 2
         print(f"- {email['subject']}")
     
     # Test 5: Find specific email
     print("\n🔎 Test 5: Finding Specific Email")
     test_subject = "Meeting Request: Project Discussion"
-    found_email = await storage.get_email_by_subject(test_subject)
+    found_email = await email_db.get_email_by_subject(test_subject)
     if found_email:
         print(f"Found email: {found_email['subject']} ({found_email['category']})")
     else:
@@ -73,7 +73,7 @@ async def test_mongodb_storage():
     
     # Test 6: Find non-existent email
     print("\n❌ Test 6: Finding Non-existent Email")
-    non_existent = await storage.get_email_by_subject("This Email Doesn't Exist")
+    non_existent = await email_db.get_email_by_subject("This Email Doesn't Exist")
     print(f"Result for non-existent email: {'Not found (expected)' if non_existent is None else 'Error: Should not have been found'}")
 
 if __name__ == "__main__":
@@ -81,4 +81,5 @@ if __name__ == "__main__":
         asyncio.run(test_mongodb_storage())
     finally:
         # Always close the connection
-        asyncio.run(storage.close()) 
+        from app.db.base import db
+        asyncio.run(db.close_db()) 

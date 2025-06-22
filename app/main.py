@@ -42,8 +42,24 @@ logger.info("API routes configured")
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting database connections")
-    await db.connect_db() 
-    await email_db.init()
+    try:
+        # First connect to the database
+        await db.connect_db() 
+        logger.info("✅ Database connection established")
+        
+        # Then initialize the email collection
+        logger.info("Initializing email database...")
+        await email_db.init()
+        logger.info("✅ Email database initialized")
+        
+        # Ensure indexes are created
+        logger.info("Creating database indexes...")
+        await email_db.ensure_indexes()
+        logger.info("✅ Database indexes created")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize database: {str(e)}")
+        raise
     
     # Clean up expired OAuth states
     try:

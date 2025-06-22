@@ -1,5 +1,6 @@
 from app.services.classifier import classify_email
-from app.db.email_db import storage
+from app.db import email_db
+from datetime import datetime
 import asyncio
 
 async def test_classification_and_storage():
@@ -29,14 +30,14 @@ async def test_classification_and_storage():
     
     print("\nTesting storage...")
     # Save the email
-    if await storage.save_email(test_email):
+    if await email_db.save_email(test_email):
         print("Email saved successfully!")
     else:
         print("Email was not saved (possibly a duplicate)")
     
     # Load and verify the saved email
     print("\nVerifying saved email...")
-    saved_emails = await storage.load_emails()
+    saved_emails = await email_db.load_emails()
     found = False
     
     for email in saved_emails:

@@ -1,15 +1,15 @@
 import os
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from app.services.classifier import classify_email
-from app.db.email_db import email_db
+from app.db import email_db
 from app.utils.gmail_parser import extract_email_body
 from app.utils.llm_utils import summarize_to_bullets
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from loguru import logger
 import re
 from app.services.token_refresh import get_valid_access_token
@@ -60,6 +60,86 @@ async def get_gmail_service_for_user(user_id: str):
         logger.error(f"Error getting Gmail service for user {user_id}: {e}")
         raise
 
+async def process_and_save_gmail_message(msg, user_id: str) -> Optional[Dict]:
+    """
+    Process a Gmail message and save it to the database if not already processed.
+    Returns the saved email data dict, or None if duplicate or error.
+    """
+    try:
+        headers = msg['payload']['headers']
+        subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), '(No Subject)')
+        from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
+
+        sender_name = None
+        sender_email = None
+        match = re.match(r'"?(.*?)"?\s*<([^>]+)>', from_header)
+        if match:
+            sender_name = match.group(1).strip() or None
+            sender_email = match.group(2).strip()
+        elif '@' in from_header:
+            sender_email = from_header.strip()
+        else:
+            sender_email = from_header.strip()
+
+        date_header = next((h['value'] for h in headers if h['name'].lower() == 'date'), None)
+        if date_header:
+            try:
+                from email.utils import parsedate_to_datetime
+                timestamp = parsedate_to_datetime(date_header).isoformat()
+            except Exception as e:
+                timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000, timezone.utc).isoformat()
+        else:
+            timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000, timezone.utc).isoformat()
+
+        body = extract_email_body(msg['payload'])
+        gmail_id = msg['id']
+
+        # Check if already processed
+        if await email_db.already_classified(gmail_id):
+            logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
+            return None
+
+        summary = summarize_to_bullets(body)
+        category = classify_email(subject, body)
+        if category.startswith("Error:"):
+            logger.error(f"❌ Classification failed for '{subject}': {category}")
+            return None
+
+        # Generate Gmail URL for direct access
+        gmail_url = f"https://mail.google.com/mail/u/0/#inbox/{gmail_id}"
+
+        email_data = {
+            'user_id': user_id,
+            'gmail_id': gmail_id,
+            'gmail_url': gmail_url,
+            'thread_id': msg.get('threadId'),
+            'history_id': msg.get('historyId'),
+            'label_ids': msg.get('labelIds', []),
+            'subject': subject,
+            'body': body,
+            'category': category,
+            'summary': summary,
+            'sender_name': sender_name,
+            'sender_email': sender_email,
+            'timestamp': timestamp,
+            'internal_date': msg.get('internalDate'),
+            'is_read': False,
+            'is_processed': True,
+            'is_sensitive': False,
+            'status': 'new',
+            'fetched_at': datetime.now(timezone.utc).isoformat(),
+        }
+
+        if await email_db.save_email(email_data):
+            logger.success(f"✅ Processed and saved: {subject} from {sender_name} <{sender_email}>")
+            return email_data
+        else:
+            logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
+            return None
+    except Exception as e:
+        logger.error(f"❌ Error processing message {msg.get('id', 'unknown')}: {e}")
+        return None
+
 async def get_incremental_emails(user_id: str, last_history_id: str) -> List[Dict]:
     """
     Fetch emails incrementally using Gmail's history API since the last_history_id.
@@ -72,75 +152,58 @@ async def get_incremental_emails(user_id: str, last_history_id: str) -> List[Dic
             startHistoryId=last_history_id,
             historyTypes=['messageAdded']
         ).execute()
+        
+        # Extract the current historyId from response for future requests
+        current_history_id = history.get('historyId')
+        if current_history_id:
+            logger.info(f"📋 Current historyId from Gmail: {current_history_id}")
+        
+        history_records = history.get('history', [])
+        if not history_records:
+            logger.info(f"📭 No new messages found since historyId: {last_history_id}")
+            # Still update to current historyId for future requests
+            if current_history_id:
+                from app.db.base import set_user_history_id
+                await set_user_history_id(user_id, current_history_id)
+                logger.info(f"✅ Updated user {user_id} historyId to: {current_history_id}")
+            return []
+        
         messages = []
-        for record in history.get('history', []):
+        for record in history_records:
             for msg in record.get('messagesAdded', []):
                 messages.append(msg['message'])
+        if not messages:
+            logger.info(f"📭 No new messages in history since historyId: {last_history_id}")
+            # Still update to current historyId for future requests
+            if current_history_id:
+                from app.db.base import set_user_history_id
+                await set_user_history_id(user_id, current_history_id)
+                logger.info(f"✅ Updated user {user_id} historyId to: {current_history_id}")
+            return []
+        
+        logger.info(f"📧 Found {len(messages)} new messages since historyId: {last_history_id}")
         processed_emails = []
         for message in messages:
-            msg = service.users().messages().get(
-                userId='me',
-                id=message['id'],
-                format='full'
-            ).execute()
-            headers = msg['payload']['headers']
-            subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), '(No Subject)')
-            from_header = next((h['value'] for h in headers if h['name'].lower() == 'from'), '')
-            sender_name = None
-            sender_email = None
-            match = re.match(r'"?(.*?)"?\s*<([^>]+)>', from_header)
-            if match:
-                sender_name = match.group(1).strip() or None
-                sender_email = match.group(2).strip()
-            elif '@' in from_header:
-                sender_email = from_header.strip()
-            else:
-                sender_email = from_header.strip()
-            date_header = next((h['value'] for h in headers if h['name'].lower() == 'date'), None)
-            if date_header:
-                try:
-                    from email.utils import parsedate_to_datetime
-                    timestamp = parsedate_to_datetime(date_header).isoformat()
-                except Exception as e:
-                    timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
-            else:
-                timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
-            body = extract_email_body(msg['payload'])
-            if await email_db.already_classified(message['id']):
-                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
+            try:
+                msg = service.users().messages().get(
+                    userId='me',
+                    id=message['id'],
+                    format='full'
+                ).execute()
+                processed = await process_and_save_gmail_message(msg, user_id)
+                if processed:
+                    processed_emails.append(processed)
+            except Exception as e:
+                logger.error(f"❌ Error processing message {message['id']}: {e}")
                 continue
-            summary = summarize_to_bullets(body)
-            category = classify_email(subject, body)
-            if category.startswith("Error:"):
-                logger.error(f"❌ Classification failed for '{subject}': {category}")
-                continue
-            email_data = {
-                'user_id': user_id,
-                'gmail_id': message['id'],
-                'thread_id': msg.get('threadId'),
-                'history_id': msg.get('historyId'),
-                'label_ids': msg.get('labelIds', []),
-                'subject': subject,
-                'body': body,
-                'category': category,
-                'summary': summary,
-                'sender_name': sender_name,
-                'sender_email': sender_email,
-                'timestamp': timestamp,
-                'internal_date': msg.get('internalDate'),
-                'is_read': False,
-                'is_processed': True,
-                'is_sensitive': False,
-                'status': 'new',
-                'fetched_at': datetime.utcnow().isoformat(),
-            }
-            email_data['user_id'] = user_id
-            logger.debug(f"Saving email with user_id={email_data['user_id']} and gmail_id={email_data['gmail_id']} and sender_email={email_data['sender_email']}")
-            if await email_db.save_email(email_data):
-                processed_emails.append(email_data)
-                logger.success(f"✅ Processed and saved: {subject} from {sender_name} <{sender_email}>")
-            else:
-                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
+        
+        # Update to current historyId for future requests
+        if current_history_id:
+            from app.db.base import set_user_history_id
+            await set_user_history_id(user_id, current_history_id)
+            logger.info(f"✅ Updated user {user_id} historyId to: {current_history_id}")
+        
+        logger.info(f"📊 Incremental sync complete: {len(processed_emails)} emails processed")
         return processed_emails
     except Exception as e:
         logger.error(f"❌ Error fetching incremental emails: {str(e)}")
@@ -151,130 +214,70 @@ async def get_latest_emails(user_id: str, max_results: int = 10, last_history_id
     if last_history_id:
         return await get_incremental_emails(user_id, last_history_id)
     try:
-        # Get Gmail service for user
         service = await get_gmail_service_for_user(user_id)
-        
-        # Get list of unread messages
         results = service.users().messages().list(
             userId='me',
             labelIds=['UNREAD'],
             maxResults=max_results
         ).execute()
-        
         messages = results.get('messages', [])
         if not messages:
             logger.info("No unread messages found.")
             return []
-        
         processed_emails = []
         for message in messages:
-            # Get full message details
             msg = service.users().messages().get(
                 userId='me',
                 id=message['id'],
                 format='full'
             ).execute()
-            
-            # Extract headers
-            headers = msg['payload']['headers']
-            
-            # Extract subject
-            subject = next(
-                (h['value'] for h in headers if h['name'].lower() == 'subject'),
-                '(No Subject)'
-            )
-            
-            # Extract sender email and name
-            from_header = next(
-                (h['value'] for h in headers if h['name'].lower() == 'from'),
-                ''
-            )
-            sender_name = None
-            sender_email = None
-            match = re.match(r'"?(.*?)"?\s*<([^>]+)>', from_header)
-            if match:
-                sender_name = match.group(1).strip() or None
-                sender_email = match.group(2).strip()
-            elif '@' in from_header:
-                sender_email = from_header.strip()
-            else:
-                sender_email = from_header.strip()
-            logger.info(f"📧 Processing email from: {sender_name} <{sender_email}>")
-            
-            # Extract date from email headers
-            date_header = next(
-                (h['value'] for h in headers if h['name'].lower() == 'date'),
-                None
-            )
-            
-            if date_header:
-                try:
-                    # Parse the email date header (e.g., "Wed, 13 Mar 2024 15:30:45 +0000")
-                    from email.utils import parsedate_to_datetime
-                    timestamp = parsedate_to_datetime(date_header).isoformat()
-                    logger.info(f"📅 Email sent date: {timestamp}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Error parsing date header: {e}")
-                    # Fallback to internal date if parsing fails
-                    timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
-                    logger.warning(f"⚠️ Using internal date instead: {timestamp}")
-            else:
-                # Fallback to internal date if no date header
-                timestamp = datetime.fromtimestamp(int(msg['internalDate']) / 1000).isoformat()
-                logger.warning(f"⚠️ No date header found, using internal date: {timestamp}")
-            
-            # Extract and decode email body using our parser
-            body = extract_email_body(msg['payload'])
-            
-            # Check if already processed using Gmail ID
-            if await email_db.already_classified(message['id']):
-                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
-                continue
-            
-            # Generate summary for new email
-            summary = summarize_to_bullets(body)
-            
-            # Classify the email
-            category = classify_email(subject, body)
-            if category.startswith("Error:"):
-                logger.error(f"❌ Classification failed for '{subject}': {category}")
-                continue
-            
-            # Prepare email data with all new schema fields
-            email_data = {
-                'user_id': user_id,
-                'gmail_id': message['id'],  # Store Gmail message ID
-                'thread_id': msg.get('threadId'),
-                'history_id': msg.get('historyId'),
-                'label_ids': msg.get('labelIds', []),
-                'subject': subject,
-                'body': body,
-                'category': category,
-                'summary': summary,
-                'sender_name': sender_name,
-                'sender_email': sender_email,
-                'timestamp': timestamp,
-                'internal_date': msg.get('internalDate'),
-                'is_read': False,  # Default, update if you track read status
-                'is_processed': True,  # Mark as processed by AI
-                'is_sensitive': False,  # Set based on your logic if needed
-                'status': 'new',  # Default triage status
-                'fetched_at': datetime.utcnow().isoformat(),
-            }
-            # Force user_id just before saving and log for debug
-            email_data['user_id'] = user_id
-            logger.debug(f"Saving email with user_id={email_data['user_id']} and gmail_id={email_data['gmail_id']} and sender_email={email_data['sender_email']}")
-            # Save to MongoDB
-            if await email_db.save_email(email_data):
-                processed_emails.append(email_data)
-                logger.success(f"✅ Processed and saved: {subject} from {sender_name} <{sender_email}>")
-            else:
-                logger.warning(f"⚠️ Skipped duplicate: {subject} from {sender_name} <{sender_email}>")
-        
+            processed = await process_and_save_gmail_message(msg, user_id)
+            if processed:
+                processed_emails.append(processed)
         return processed_emails
-        
     except Exception as e:
         logger.error(f"❌ Error fetching emails: {str(e)}")
+        return []
+
+async def get_current_history_id(user_id: str) -> str:
+    """
+    Get the current historyId for a user from Gmail API.
+    This is useful when the stored historyId is too old.
+    """
+    try:
+        service = await get_gmail_service_for_user(user_id)
+        profile = service.users().getProfile(userId='me').execute()
+        return profile.get("historyId")
+    except Exception as e:
+        logger.error(f"❌ Error getting current historyId for user {user_id}: {e}")
+        return None
+    
+async def handle_history_id_too_old(user_id: str, old_history_id: str) -> List[Dict]:
+    """
+    Handle the case when historyId is too old by doing a full sync.
+    This is a fallback when incremental sync fails due to old historyId.
+    """
+    logger.warning(f"🔄 HistoryId {old_history_id} is too old for user {user_id}. Doing full sync.")
+    
+    try:
+        # Get current historyId
+        current_history_id = await get_current_history_id(user_id)
+        if not current_history_id:
+            logger.error(f"❌ Could not get current historyId for user {user_id}")
+            return []
+        
+        # Do a full sync of recent emails (last 50)
+        emails = await get_latest_emails(user_id, max_results=50, last_history_id=None)
+        
+        # Update to current historyId
+        from app.db.base import set_user_history_id
+        await set_user_history_id(user_id, current_history_id)
+        logger.info(f"✅ Updated user {user_id} historyId from {old_history_id} to {current_history_id}")
+        
+        return emails
+        
+    except Exception as e:
+        logger.error(f"❌ Error handling old historyId for user {user_id}: {e}")
         return []
 
 async def setup_gmail_watch(user_id: str):
