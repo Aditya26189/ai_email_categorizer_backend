@@ -39,6 +39,13 @@ pydantic[email]
 # Clerk
 fastapi-clerk-auth
 
+# Svix (webhooks)
 svix
 
+# SocketIO
 python-socketio
+
+# Testing
+testfixtures  # For test support (if used)
+pytest  # For running tests
+unittest.mock  # Standard library, but listed for clarity
