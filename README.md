@@ -34,6 +34,10 @@ GMAIL_SCOPES = [
 ```
 
 # use python 3.12
+# download ngrok for local testing webhook from clerk and gmail -> 
+- choco install ngrok
+- ngrok config add-authtoken 2yjRMK9Yf7Af52zUtx92W6UBYNT_5944VTZw8d1uMEfuBSCT
+- ngrok http http://localhost:8080
 
 ### 🔄 Complete OAuth Workflow
 
