@@ -288,8 +288,8 @@ cd ai_email_categorizer
 
 2. Create and activate a virtual environment:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+py -3.12 -m venv venv_py312   
+.\venv_py312\Scripts\activate
 ```
 
 3. Install dependencies:
