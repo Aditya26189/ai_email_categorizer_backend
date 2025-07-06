@@ -38,6 +38,12 @@ GMAIL_SCOPES = [
 - choco install ngrok
 - ngrok config add-authtoken 2yjRMK9Yf7Af52zUtx92W6UBYNT_5944VTZw8d1uMEfuBSCT
 - ngrok http http://localhost:8080
+if not given permission use this command
+```md
+Set-ExecutionPolicy Bypass -Scope Process -Force; `
+>> [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+>> iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```
 
 ### 🔄 Complete OAuth Workflow
 
