@@ -1,3 +1,12 @@
+# CrashLensLogger logs are printed to stdout in NDJSON format by default.
+# To save logs to a file, run your server with output redirection, e.g.:
+#   uvicorn app.main:app > logs.jsonl
+# You can then analyze logs in logs.jsonl with any NDJSON tool.
+from crashlens_logger import CrashLensLogger
+import uuid
+from datetime import datetime
+
+
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Depends
 from typing import List, Dict
 from datetime import datetime
@@ -9,6 +18,11 @@ from app.services.gmail_client import get_latest_emails
 from app.services.classifier import classify_email
 from app.utils.llm_utils import summarize_to_bullets
 from app.core.clerk import clerk_auth
+
+
+crashlens_logger = CrashLensLogger()
+
+
 
 router = APIRouter(prefix="/classify", tags=["classification"])
 
@@ -63,7 +77,8 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10, us
         logger.error(f"Error in background email processing: {str(e)}")
 
 @router.post("/", response_model=EmailResponse)
-async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_auth)):
+async def classify_and_store_email(request: EmailRequest):
+  
     """
     Classify an email and store it in MongoDB.
     Returns 409 if email with same Gmail ID already exists.
@@ -72,24 +87,64 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
         logger.info(f"\nProcessing new email:")
         logger.info(f"Subject: {request.subject}")
         logger.info(f"Gmail ID: {request.gmail_id}")
-        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
-        # Check if email already exists
+        clerk_user_id = "anonymous"
         if request.gmail_id and await email_db.already_classified(request.gmail_id):
             logger.warning(f"Email with Gmail ID {request.gmail_id} already exists")
             raise HTTPException(
                 status_code=409,
                 detail="Email with this Gmail ID already exists"
             )
-        # Classify the email
-        category = classify_email(request.subject, request.body)
+        # --- Gemini Classifier Logging ---
+        trace_id = str(uuid.uuid4())
+        start_time = datetime.utcnow().isoformat() + "Z"
+        category, gemini_prompt, gemini_model = classify_email(request.subject, request.body, return_prompt_and_model=True)
+        end_time = datetime.utcnow().isoformat() + "Z"
+        prompt_tokens = len(gemini_prompt.split()) if gemini_prompt else 0
+        completion_tokens = len(category.split()) if category else 0
+        total_tokens = prompt_tokens + completion_tokens
+        usage = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens
+        }
+        crashlens_logger.log_event(
+            traceId=trace_id,
+            startTime=start_time,
+            endTime=end_time,
+            input={"model": gemini_model, "prompt": gemini_prompt},
+            usage=usage,
+            output=category,
+            output_file="logs.jsonl"
+            
+        )
         logger.info(f"Classified as: {category}")
-        # Generate summary for the email
+        # --- Summarization Logging (optional, still hardcoded prompt/model) ---
+        summary_trace_id = str(uuid.uuid4())
+        summary_start_time = datetime.utcnow().isoformat() + "Z"
+        summary_prompt = f"Summarize the following text into 5 key bullet points.\nFocus on the most important information and main points.\nKeep each bullet point concise and clear.\n\nText:\n{request.body}\n\nReturn only the bullet points, one per line, starting with '- '."
+        summary_model = gemini_model
         summary = summarize_to_bullets(request.body)
+        summary_end_time = datetime.utcnow().isoformat() + "Z"
+        summary_prompt_tokens = len(summary_prompt.split())
+        summary_completion_tokens = sum(len(s.split()) for s in summary)
+        summary_total_tokens = summary_prompt_tokens + summary_completion_tokens
+        summary_usage = {
+            "prompt_tokens": summary_prompt_tokens,
+            "completion_tokens": summary_completion_tokens,
+            "total_tokens": summary_total_tokens
+        }
+        crashlens_logger.log_event(
+            traceId=summary_trace_id,
+            startTime=summary_start_time,
+            endTime=summary_end_time,
+            input={"model": summary_model, "prompt": summary_prompt},
+            usage=summary_usage,
+            output=summary,
+            output_file="logs.jsonl"
+        )
         logger.info(f"Generated summary with {len(summary)} bullet points")
-        # Get current timestamp in ISO format
         current_time = datetime.utcnow().isoformat()
         logger.info(f"\ud83d\udcc5 Timestamp: {current_time}")
-        # Prepare email document
         email_doc = {
             "user_id": clerk_user_id,
             "gmail_id": request.gmail_id,  # Gmail ID is required
@@ -101,7 +156,6 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
             "sender_email": request.sender_email or "Manual Classification",
             "summary": summary
         }
-        # Save using email_db instance
         if not await email_db.save_email(email_doc):
             logger.warning(f"Failed to save email with Gmail ID {request.gmail_id}")
             raise HTTPException(
@@ -111,7 +165,6 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
         logger.success(f"Email successfully processed and saved")
         return EmailResponse(**email_doc)
     except HTTPException as e:
-        # Re-raise HTTP exceptions
         raise e
     except Exception as e:
         logger.error(f"Error in /classify endpoint: {str(e)}")
@@ -123,28 +176,25 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
 @router.get("/emails", response_model=List[ClassifiedEmail])
 async def classify_latest_emails(
     background_tasks: BackgroundTasks,
-    batch_size: int = Query(10, ge=1, le=50, description="Number of emails to process in each batch"),
-    user=Depends(clerk_auth)
+    batch_size: int = Query(10, ge=1, le=50, description="Number of emails to process in each batch")
 ):
     """
     Fetch the latest emails from Gmail and start background processing.
     Returns immediately with the list of emails that will be processed.
     """
     try:
-        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
-        if not isinstance(clerk_user_id, str) or not clerk_user_id.strip():
-            logger.error(f"No valid Clerk user ID found in token : {user}")
-            raise HTTPException(status_code=400, detail="No valid Clerk user ID found in token.")
+        # Set user_id to 'anonymous' for unauthenticated requests
+        clerk_user_id = "anonymous"
         emails = await get_latest_emails(clerk_user_id, 50)  # Fetch more emails than batch size
         if not emails:
             logger.info("No new emails found to process")
             return []
-        logger.info(f"📧 Found {len(emails)} emails to process")
-        background_tasks.add_task(process_emails_background, emails, batch_size, user)
+        logger.info(f"\ud83d\udce7 Found {len(emails)} emails to process")
+        background_tasks.add_task(process_emails_background, emails, batch_size, {"clerk_user_id": clerk_user_id})
         logger.info(f"Started background processing with batch size: {batch_size}")
         return [ClassifiedEmail(**email) for email in emails]
     except Exception as e:
-        logger.error(f"❌ Failed to start email processing: {str(e)}")
+        logger.error(f"\u274c Failed to start email processing: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch or classify emails: {str(e)}"

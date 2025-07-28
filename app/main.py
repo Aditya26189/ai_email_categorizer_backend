@@ -29,7 +29,7 @@ logger.info("Middleware configured")
 
 # Include routers with Clerk authentication
 app.include_router(email_routes.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
-app.include_router(classify_routes.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
+app.include_router(classify_routes.router, prefix="/routers/v1")
 app.include_router(auth_routes, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
 app.include_router(health_routes.router, prefix="/routers/v1")  # Health check doesn't need auth
 app.include_router(clerk_webhook)
