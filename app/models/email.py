@@ -208,6 +208,38 @@ class CategoryListResponse(BaseModel):
             }
         }
 
+class EmailRecategorizeRequest(BaseModel):
+    gmail_id: str = Field(..., description="Gmail ID of the email to recategorize")
+    new_category: Optional[str] = Field(None, description="New category to assign (if None, AI will re-classify)")
+    regenerate_summary: bool = Field(default=False, description="Whether to regenerate the summary")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "gmail_id": "1853d239248aee99",
+                "new_category": "Work",
+                "regenerate_summary": True
+            }
+        }
+
+class EmailRecategorizeResponse(BaseModel):
+    message: str = Field(..., description="Response message")
+    gmail_id: str = Field(..., description="Gmail ID of the updated email")
+    old_category: Optional[str] = Field(None, description="Previous category")
+    new_category: str = Field(..., description="New category assigned")
+    summary: Optional[List[str]] = Field(None, description="Updated summary if regenerated")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Email recategorized successfully",
+                "gmail_id": "1853d239248aee99",
+                "old_category": "Personal",
+                "new_category": "Work",
+                "summary": ["Updated summary point 1", "Updated summary point 2"]
+            }
+        }
+
 class ErrorResponse(BaseModel):
     detail: str = Field(..., description="Error message")
     class Config:
@@ -215,4 +247,4 @@ class ErrorResponse(BaseModel):
             "example": {
                 "detail": "Authentication failed"
             }
-        } 
+        }

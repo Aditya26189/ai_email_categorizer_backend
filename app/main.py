@@ -5,6 +5,7 @@ from app.db.base import db
 from app.db import email_db
 from app.core.logger import setup_logging, log_request
 from app.core.middleware import setup_middleware
+from app.core.api_logging import APILoggingMiddleware, api_logger
 from app.routers import email_routes, classify_routes, health_routes, webhook, gmail
 from app.routers.auth import auth_routes, clerk_webhook
 from app.routers.auth_callback import router as auth_callback_router
@@ -27,9 +28,13 @@ logger.info("FastAPI application created")
 setup_middleware(app)
 logger.info("Middleware configured")
 
+# Add API logging middleware
+app.add_middleware(APILoggingMiddleware, api_logger=api_logger)
+logger.info("API logging middleware added")
+
 # Include routers with Clerk authentication
 app.include_router(email_routes.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
-app.include_router(classify_routes.router, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
+app.include_router(classify_routes.router, prefix="/routers/v1")  # Authentication removed
 app.include_router(auth_routes, prefix="/routers/v1", dependencies=[Depends(clerk_auth)])
 app.include_router(health_routes.router, prefix="/routers/v1")  # Health check doesn't need auth
 app.include_router(clerk_webhook)

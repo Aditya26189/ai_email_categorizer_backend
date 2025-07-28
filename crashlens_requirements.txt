@@ -1,0 +1,1 @@
+crashlens-logger>=1.0.0

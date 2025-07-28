@@ -63,7 +63,7 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10, us
         logger.error(f"Error in background email processing: {str(e)}")
 
 @router.post("/", response_model=EmailResponse)
-async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_auth)):
+async def classify_and_store_email(request: EmailRequest):
     """
     Classify an email and store it in MongoDB.
     Returns 409 if email with same Gmail ID already exists.
@@ -72,7 +72,8 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
         logger.info(f"\nProcessing new email:")
         logger.info(f"Subject: {request.subject}")
         logger.info(f"Gmail ID: {request.gmail_id}")
-        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
+        # Use a default user_id since no authentication is required
+        clerk_user_id = "anonymous_user"
         # Check if email already exists
         if request.gmail_id and await email_db.already_classified(request.gmail_id):
             logger.warning(f"Email with Gmail ID {request.gmail_id} already exists")
@@ -88,7 +89,7 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
         logger.info(f"Generated summary with {len(summary)} bullet points")
         # Get current timestamp in ISO format
         current_time = datetime.utcnow().isoformat()
-        logger.info(f"\ud83d\udcc5 Timestamp: {current_time}")
+        logger.info(f"Timestamp: {current_time}")
         # Prepare email document
         email_doc = {
             "user_id": clerk_user_id,
@@ -124,23 +125,25 @@ async def classify_and_store_email(request: EmailRequest, user=Depends(clerk_aut
 async def classify_latest_emails(
     background_tasks: BackgroundTasks,
     batch_size: int = Query(10, ge=1, le=50, description="Number of emails to process in each batch"),
-    user=Depends(clerk_auth)
+    user_id: str = Query(..., description="User ID to fetch emails for")
 ):
     """
     Fetch the latest emails from Gmail and start background processing.
     Returns immediately with the list of emails that will be processed.
     """
     try:
-        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
+        clerk_user_id = user_id
         if not isinstance(clerk_user_id, str) or not clerk_user_id.strip():
-            logger.error(f"No valid Clerk user ID found in token : {user}")
-            raise HTTPException(status_code=400, detail="No valid Clerk user ID found in token.")
+            logger.error(f"No valid user ID provided: {clerk_user_id}")
+            raise HTTPException(status_code=400, detail="No valid user ID provided.")
         emails = await get_latest_emails(clerk_user_id, 50)  # Fetch more emails than batch size
         if not emails:
             logger.info("No new emails found to process")
             return []
         logger.info(f"📧 Found {len(emails)} emails to process")
-        background_tasks.add_task(process_emails_background, emails, batch_size, user)
+        # Create a mock user object for background processing
+        mock_user = {"clerk_user_id": clerk_user_id, "sub": clerk_user_id}
+        background_tasks.add_task(process_emails_background, emails, batch_size, mock_user)
         logger.info(f"Started background processing with batch size: {batch_size}")
         return [ClassifiedEmail(**email) for email in emails]
     except Exception as e:

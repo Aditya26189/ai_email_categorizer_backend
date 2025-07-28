@@ -1,6 +1,8 @@
 import os
+import time
 import requests
 from dotenv import load_dotenv
+from app.core.api_logging import email_logger
 
 # Load environment variables from .env file
 load_dotenv()
@@ -16,6 +18,8 @@ def classify_email(subject: str, body: str) -> str:
     Returns:
         str: The classified category or error message
     """
+    start_time = time.time()
+    
     # Get API key from environment variables
     api_key = os.getenv('GEMINI_API_KEY')
     if not api_key:
@@ -82,6 +86,17 @@ Category:"""
         # Extract the category from the response
         if 'candidates' in result and len(result['candidates']) > 0:
             category = result['candidates'][0]['content']['parts'][0]['text'].strip()
+            
+            # Log the classification
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            email_logger.log_email_classification(
+                email_subject=subject,
+                email_body=body,
+                predicted_category=category,
+                model_used="gemini-2.0-flash",
+                processing_time_ms=processing_time_ms
+            )
+            
             return category
         else:
             return "Error: Unexpected API response format"
