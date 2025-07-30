@@ -18,6 +18,7 @@ from app.services.gmail_client import get_latest_emails
 from app.services.classifier import classify_email
 from app.utils.llm_utils import summarize_to_bullets
 from app.core.clerk import clerk_auth
+from app.core.logger import safe_unicode_str
 
 
 crashlens_logger = CrashLensLogger()
@@ -36,7 +37,7 @@ async def process_emails_background(emails: List[Dict], batch_size: int = 10, us
             raise ValueError("User context is required for background email processing.")
         user_id = user.get("clerk_user_id") or user.get("sub")
         total_emails = len(emails)
-        logger.info(f"🔄 Starting background processing of {total_emails} emails for user_id={user_id}")
+        logger.info(f"Starting background processing of {total_emails} emails for user_id={user_id}")
         for i in range(0, total_emails, batch_size):
             batch = emails[i:i + batch_size]
             logger.info(f"Processing batch {i//batch_size + 1} of {(total_emails + batch_size - 1)//batch_size}")
@@ -85,7 +86,7 @@ async def classify_and_store_email(request: EmailRequest):
     """
     try:
         logger.info(f"\nProcessing new email:")
-        logger.info(f"Subject: {request.subject}")
+        logger.info(f"Subject: {safe_unicode_str(request.subject or '')}")
         logger.info(f"Gmail ID: {request.gmail_id}")
         clerk_user_id = "anonymous"
         if request.gmail_id and await email_db.already_classified(request.gmail_id):
@@ -144,7 +145,7 @@ async def classify_and_store_email(request: EmailRequest):
         )
         logger.info(f"Generated summary with {len(summary)} bullet points")
         current_time = datetime.utcnow().isoformat()
-        logger.info(f"\ud83d\udcc5 Timestamp: {current_time}")
+        logger.info(f"Timestamp: {current_time}")
         email_doc = {
             "user_id": clerk_user_id,
             "gmail_id": request.gmail_id,  # Gmail ID is required
@@ -189,12 +190,12 @@ async def classify_latest_emails(
         if not emails:
             logger.info("No new emails found to process")
             return []
-        logger.info(f"\ud83d\udce7 Found {len(emails)} emails to process")
+        logger.info(f"Found {len(emails)} emails to process")
         background_tasks.add_task(process_emails_background, emails, batch_size, {"clerk_user_id": clerk_user_id})
         logger.info(f"Started background processing with batch size: {batch_size}")
         return [ClassifiedEmail(**email) for email in emails]
     except Exception as e:
-        logger.error(f"\u274c Failed to start email processing: {str(e)}")
+        logger.error(f"Failed to start email processing: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to fetch or classify emails: {str(e)}"

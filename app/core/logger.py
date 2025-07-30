@@ -7,6 +7,16 @@ from datetime import datetime
 
 from loguru import logger
 
+def safe_unicode_str(text: str) -> str:
+    """Safely handle Unicode characters in strings for logging."""
+    try:
+        # Try to encode and decode to catch problematic characters
+        text.encode('utf-8')
+        return text
+    except UnicodeEncodeError:
+        # If there are problematic characters, replace them
+        return text.encode('utf-8', errors='replace').decode('utf-8')
+
 class InterceptHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -19,8 +29,10 @@ class InterceptHandler(logging.Handler):
             frame = frame.f_back
             depth += 1
 
+        # Safely handle the message to avoid Unicode issues
+        message = safe_unicode_str(record.getMessage())
         logger.opt(depth=depth, exception=record.exc_info).log(
-            level, record.getMessage()
+            level, message
         )
 
 def setup_logging(
