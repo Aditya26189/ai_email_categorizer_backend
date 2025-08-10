@@ -28,3 +28,31 @@ logging:
   include_request_body: true
   include_response_body: false
   max_body_size: 1000  # characters
+
+# Retry Loop Detection Policy
+retry_detection:
+  enabled: true
+  policy_file: "crashlens_retry_policy.yaml"
+  
+  # Retry pattern monitoring
+  max_retries_per_request: 3
+  retry_cost_threshold: 0.05
+  rapid_retry_window_seconds: 10
+  
+  # Budget monitoring
+  daily_retry_budget: 5.00
+  monthly_retry_budget: 100.00
+  max_retry_cost_per_trace: 0.20
+  
+  # Model fallback configuration
+  fallback_models:
+    "gpt-4": "gpt-3.5-turbo"
+    "gpt-4-turbo": "gpt-3.5-turbo"
+    "claude-3-opus": "claude-3-haiku"
+    "gemini-2.0-flash": "gemini-1.5-flash"
+  
+  # Alert thresholds
+  alerts:
+    excessive_retries: 3
+    high_cost_per_retry: 0.05
+    rapid_retry_count: 2
