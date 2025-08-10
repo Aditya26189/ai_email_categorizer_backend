@@ -33,6 +33,21 @@ jobs:
     runs-on: ubuntu-latest
     name: Crashlens Token Waste Detection & Security Analysis
     
+    # 🔧 CONFIGURATION SECTION - Adjust these values to control CI behavior
+    env:
+      # Policy Configuration
+      CRASHLENS_TEMPLATES: "retry-loop-prevention,model-overkill-detection,budget-protection"  # or "all"
+      CRASHLENS_SEVERITY: "high"                    # low/medium/high/critical
+      CRASHLENS_FAIL_ON_VIOLATIONS: "false"        # "true" to break CI on violations
+      
+      # Cost Limits (optional)
+      DAILY_COST_LIMIT: "10.00"                    # Maximum daily cost in USD
+      EXPENSIVE_REQUEST_THRESHOLD: "0.05"          # Flag requests over $0.05
+      
+      # Performance Limits (optional)  
+      SLOW_RESPONSE_THRESHOLD_MS: "3000"           # Flag responses over 3 seconds
+      ERROR_RATE_THRESHOLD: "0.20"                 # Flag if >20% error rate
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -55,10 +70,17 @@ jobs:
           
       - name: Initialize Crashlens Configuration
         run: |
+          # Use environment variables for configuration
+          echo "🔧 Using CI Configuration:"
+          echo "  Templates: $CRASHLENS_TEMPLATES"
+          echo "  Severity: $CRASHLENS_SEVERITY" 
+          echo "  Fail on violations: $CRASHLENS_FAIL_ON_VIOLATIONS"
+          echo "  Daily cost limit: \$$DAILY_COST_LIMIT"
+          
           # Set up automated configuration
-          export CRASHLENS_TEMPLATES="retry-loop-prevention,model-overkill-detection,budget-protection"
-          export CRASHLENS_SEVERITY="high"
-          export CRASHLENS_FAIL_ON_VIOLATIONS="false"  # Don't fail on first run
+          export CRASHLENS_TEMPLATES="$CRASHLENS_TEMPLATES"
+          export CRASHLENS_SEVERITY="$CRASHLENS_SEVERITY"
+          export CRASHLENS_FAIL_ON_VIOLATIONS="$CRASHLENS_FAIL_ON_VIOLATIONS"
           export CRASHLENS_LOGS_SOURCE="local"
           export CRASHLENS_CREATE_WORKFLOW="false"
           
@@ -68,6 +90,37 @@ jobs:
           # Show configuration
           echo "📋 Crashlens Configuration:"
           cat .crashlens/config.yaml
+          
+      - name: Check Cost Limits (Optional)
+        if: env.DAILY_COST_LIMIT != ''
+        continue-on-error: true  # Remove this line to make cost limits break CI
+        run: |
+          echo "💰 Checking cost limits..."
+          
+          # Install jq for JSON processing
+          apt-get update && apt-get install -y jq bc || true
+          
+          # Calculate total cost from logs (if they contain cost data)
+          if ls logs/*.jsonl 1> /dev/null 2>&1; then
+            TOTAL_COST=$(cat logs/*.jsonl | jq -r '.totalCost // 0' 2>/dev/null | awk '{sum+=$1} END {print sum}' || echo "0")
+            
+            echo "📊 Cost Analysis:"
+            echo "   Total cost in logs: \$$TOTAL_COST"
+            echo "   Daily limit: \$$DAILY_COST_LIMIT"
+            
+            # Check if limit exceeded
+            if command -v bc >/dev/null && (( $(echo "$TOTAL_COST > $DAILY_COST_LIMIT" | bc -l 2>/dev/null || echo 0) )); then
+              echo "🚨 COST LIMIT EXCEEDED!"
+              echo "   Current: \$$TOTAL_COST"
+              echo "   Limit: \$$DAILY_COST_LIMIT"
+              echo "   Recommendation: Review expensive API calls and optimize"
+              # exit 1  # Uncomment to break CI on cost limit exceeded
+            else
+              echo "✅ Cost within limits"
+            fi
+          else
+            echo "ℹ️ No log files available for cost analysis"
+          fi
           
       - name: Prepare Real Log Data
         run: |
