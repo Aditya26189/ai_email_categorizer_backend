@@ -1,4 +1,4 @@
-name: Crashlens Analysis
+name: CrashLens Analysis (Comprehensive)
 
 on:
   # Run on push to main and pull requests
@@ -31,7 +31,7 @@ on:
 jobs:
   crashlens-analysis:
     runs-on: ubuntu-latest
-    name: Crashlens Token Waste Detection & Security Analysis
+    name: CrashLens Comprehensive Analysis (Non-breaking)
     
     # 🔧 CONFIGURATION SECTION - Adjust these values to control CI behavior
     env:
