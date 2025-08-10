@@ -65,10 +65,10 @@ jobs:
       - name: Install Crashlens (Latest Published Version)
         run: |
           # Install your published package
-          poetry run pip install crashlens==2.9.1
+             pip install crashlens==2.9.1
           
           # Verify installation
-          poetry run crashlens --version
+             crashlens --version
           
       - name: Initialize Crashlens Configuration
         run: |
@@ -80,7 +80,7 @@ jobs:
           export CRASHLENS_CREATE_WORKFLOW="false"
           
           # Initialize config
-          poetry run crashlens init --non-interactive
+             crashlens init --non-interactive
           
           # Show configuration
           echo "📋 Crashlens Configuration:"
@@ -94,10 +94,10 @@ jobs:
           mkdir -p logs
           
           # Generate different scenarios for comprehensive testing
-          poetry run crashlens simulate --output logs/retry-patterns.jsonl --count 50 --scenario retry-loop --seed 42
-          poetry run crashlens simulate --output logs/model-overkill.jsonl --count 30 --scenario model-overkill --seed 123
-          poetry run crashlens simulate --output logs/normal-usage.jsonl --count ${{ inputs.count || 100 }} --scenario normal --seed 456
-          poetry run crashlens simulate --output logs/slow-requests.jsonl --count 25 --scenario slow --seed 789
+             crashlens simulate --output logs/retry-patterns.jsonl --count 50 --scenario retry-loop --seed 42
+             crashlens simulate --output logs/model-overkill.jsonl --count 30 --scenario model-overkill --seed 123
+             crashlens simulate --output logs/normal-usage.jsonl --count ${{ inputs.count || 100 }} --scenario normal --seed 456
+             crashlens simulate --output logs/slow-requests.jsonl --count 25 --scenario slow --seed 789
           
           # Show generated files
           echo "📁 Generated log files:"
@@ -114,7 +114,7 @@ jobs:
           echo "🔍 Running retry loop detection..."
           
           # Run retry loop detection and capture output
-          poetry run crashlens policy-check logs/retry-patterns.jsonl \
+             crashlens policy-check logs/retry-patterns.jsonl \
             --policy-template retry-loop-prevention \
             --severity-threshold high > retry-analysis-report.md 2>&1
             
@@ -127,7 +127,7 @@ jobs:
           echo "🔍 Running model overkill detection..."
           
           # Run model overkill detection and capture output
-          poetry run crashlens policy-check logs/model-overkill.jsonl \
+             crashlens policy-check logs/model-overkill.jsonl \
             --policy-template model-overkill-detection \
             --severity-threshold high > model-overkill-report.md 2>&1
             
@@ -143,7 +143,7 @@ jobs:
           cat logs/*.jsonl > logs/combined-logs.jsonl
           
           # Run full policy suite and capture output
-          poetry run crashlens policy-check logs/combined-logs.jsonl \
+             crashlens policy-check logs/combined-logs.jsonl \
             --policy-template all \
             --severity-threshold medium > comprehensive-analysis-report.md 2>&1
             
@@ -156,13 +156,13 @@ jobs:
           echo "🛡️ Running security dependency scan..."
           
           # Install security tools
-          poetry run pip install safety bandit
+             pip install safety bandit
           
           # Check for known vulnerabilities
-          poetry run safety check --json --output safety-report.json || echo "Safety scan completed with findings"
+             safety check --json --output safety-report.json || echo "Safety scan completed with findings"
           
           # Static security analysis on source code
-          poetry run bandit -r crashlens/ -f json -o bandit-report.json || echo "Bandit scan completed"
+             bandit -r crashlens/ -f json -o bandit-report.json || echo "Bandit scan completed"
           
           echo "✅ Security scan completed"
           
@@ -248,7 +248,7 @@ jobs:
           
           EOF
           
-          poetry run python analyze_performance.py
+             python analyze_performance.py
           
       - name: Generate Comprehensive Report
         if: always()
