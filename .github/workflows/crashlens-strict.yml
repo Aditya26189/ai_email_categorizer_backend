@@ -23,7 +23,7 @@ jobs:
       - name: Install CrashLens and Dependencies
         run: |
           pip install crashlens==2.9.1
-          apt-get update && apt-get install -y jq bc
+          sudo apt-get update && sudo apt-get install -y jq bc
 
       - name: Verify log files exist
         run: |

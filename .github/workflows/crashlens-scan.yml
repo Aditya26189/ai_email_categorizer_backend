@@ -98,7 +98,7 @@ jobs:
           echo "💰 Checking cost limits..."
           
           # Install jq for JSON processing
-          apt-get update && apt-get install -y jq bc || true
+          sudo apt-get update && sudo apt-get install -y jq bc || true
           
           # Calculate total cost from logs (if they contain cost data)
           if ls logs/*.jsonl 1> /dev/null 2>&1; then
