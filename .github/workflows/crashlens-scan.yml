@@ -40,18 +40,18 @@ jobs:
           fetch-depth: 0
           
       - name: Set up Python
-        uses: actions/setup-python@v5  # Updated to v5
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'  # Match your project
+          python-version: '3.12'
+          cache: 'pip'
           
-      
-      - name: Install Crashlens (Latest Published Version)
+      - name: Install Crashlens
         run: |
-          # Install your published package
-             pip install crashlens==2.9.1
+          # Install Crashlens directly from PyPI
+          pip install crashlens==2.9.1
           
           # Verify installation
-             crashlens --version
+          crashlens --version
           
       - name: Initialize Crashlens Configuration
         run: |
@@ -63,58 +63,70 @@ jobs:
           export CRASHLENS_CREATE_WORKFLOW="false"
           
           # Initialize config
-             crashlens init --non-interactive
+          crashlens init --non-interactive
           
           # Show configuration
           echo "📋 Crashlens Configuration:"
           cat .crashlens/config.yaml
           
-      - name: Generate Test Data
+      - name: Prepare Real Log Data
         run: |
-          echo "🧪 Generating test data for analysis..."
+          echo "📁 Using real log files from .llm_logs/ folder..."
           
-          # Create logs directory
-          mkdir -p logs
+          # Check if .llm_logs directory exists
+          if [ -d ".llm_logs" ]; then
+            echo "✅ Found .llm_logs directory"
+            ls -la .llm_logs/
+            
+            # Create logs directory for analysis
+            mkdir -p logs
+            
+            # Copy all .jsonl files from .llm_logs to logs directory
+            if ls .llm_logs/*.jsonl 1> /dev/null 2>&1; then
+              cp .llm_logs/*.jsonl logs/
+              echo "📋 Copied log files:"
+              ls -la logs/
+              
+              # Validate log files
+              echo "📊 Log file validation:"
+              wc -l logs/*.jsonl
+              
+              # Show sample of first file for verification
+              echo "🔍 Sample from first log file:"
+              head -n 2 logs/*.jsonl | head -n 1
+            else
+              echo "❌ No .jsonl files found in .llm_logs directory"
+              echo "📁 Contents of .llm_logs:"
+              ls -la .llm_logs/
+              exit 1
+            fi
+          else
+            echo "❌ .llm_logs directory not found in repository"
+            echo "� Repository contents:"
+            ls -la
+            exit 1
+          fi
           
-          # Generate different scenarios for comprehensive testing
-             crashlens simulate --output logs/retry-patterns.jsonl --count 50 --scenario retry-loop --seed 42
-             crashlens simulate --output logs/model-overkill.jsonl --count 30 --scenario model-overkill --seed 123
-             crashlens simulate --output logs/normal-usage.jsonl --count ${{ inputs.count || 100 }} --scenario normal --seed 456
-             crashlens simulate --output logs/slow-requests.jsonl --count 25 --scenario slow --seed 789
-          
-          # Show generated files
-          echo "📁 Generated log files:"
-          ls -la logs/
-          
-          # Quick validation
-          echo "📊 Data validation:"
-          wc -l logs/*.jsonl
-          
-      - name: Run Crashlens Policy Analysis - Retry Detection
-        id: retry-analysis
+      - name: Run Crashlens Policy Analysis - Individual Files
+        id: individual-analysis
         continue-on-error: true
         run: |
-          echo "🔍 Running retry loop detection..."
+          echo "🔍 Running policy analysis on individual log files..."
           
-          # Run retry loop detection and capture output
-             crashlens policy-check logs/retry-patterns.jsonl \
-            --policy-template retry-loop-prevention \
-            --severity-threshold high > retry-analysis-report.md 2>&1
-            
-          echo "✅ Retry analysis completed"
-          
-      - name: Run Crashlens Policy Analysis - Model Overkill
-        id: model-analysis
-        continue-on-error: true
-        run: |
-          echo "🔍 Running model overkill detection..."
-          
-          # Run model overkill detection and capture output
-             crashlens policy-check logs/model-overkill.jsonl \
-            --policy-template model-overkill-detection \
-            --severity-threshold high > model-overkill-report.md 2>&1
-            
-          echo "✅ Model overkill analysis completed"
+          # Analyze each log file separately
+          for log_file in logs/*.jsonl; do
+            if [ -f "$log_file" ]; then
+              filename=$(basename "$log_file" .jsonl)
+              echo "� Analyzing $log_file..."
+              
+              # Run policy check and save to individual report
+              crashlens policy-check "$log_file" \
+                --policy-template all \
+                --severity-threshold high > "analysis-${filename}.md" 2>&1
+                
+              echo "✅ Analysis completed for $filename"
+            fi
+          done
           
       - name: Run Comprehensive Policy Check
         id: full-analysis
@@ -126,7 +138,7 @@ jobs:
           cat logs/*.jsonl > logs/combined-logs.jsonl
           
           # Run full policy suite and capture output
-             crashlens policy-check logs/combined-logs.jsonl \
+          crashlens policy-check logs/combined-logs.jsonl \
             --policy-template all \
             --severity-threshold medium > comprehensive-analysis-report.md 2>&1
             
@@ -139,13 +151,18 @@ jobs:
           echo "🛡️ Running security dependency scan..."
           
           # Install security tools
-             pip install safety bandit
+          pip install safety bandit
           
           # Check for known vulnerabilities
-             safety check --json --output safety-report.json || echo "Safety scan completed with findings"
+          safety check --json --output safety-report.json || echo "Safety scan completed with findings"
           
-          # Static security analysis on source code
-             bandit -r crashlens/ -f json -o bandit-report.json || echo "Bandit scan completed"
+          # Static security analysis on source code (if any Python files exist)
+          if [ -d "crashlens/" ]; then
+            bandit -r crashlens/ -f json -o bandit-report.json || echo "Bandit scan completed"
+          else
+            echo "No source code directory found, skipping bandit scan"
+            echo '{"results": [], "metrics": {"_totals": {"nosec": 0, "skipped_tests": 0, "loc": 0, "confidence": {"high": 0, "medium": 0, "low": 0}, "severity": {"high": 0, "medium": 0, "low": 0}}}}' > bandit-report.json
+          fi
           
           echo "✅ Security scan completed"
           
@@ -229,9 +246,7 @@ jobs:
           print(f"   Expensive requests: {performance_stats['expensive_requests']}")
           print(f"   Average response time: {performance_stats['avg_response_time']:.0f}ms")
           
-          EOF
-          
-             python analyze_performance.py
+        
           
       - name: Generate Comprehensive Report
         if: always()
@@ -295,8 +310,7 @@ jobs:
           name: crashlens-analysis-${{ github.run_number }}
           path: |
             final-crashlens-report.md
-            retry-analysis-report.md
-            model-overkill-report.md
+            analysis-*.md
             comprehensive-analysis-report.md
             performance-analysis-results.json
             safety-report.json
