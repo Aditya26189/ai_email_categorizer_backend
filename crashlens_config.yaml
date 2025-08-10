@@ -1,0 +1,30 @@
+pricing:
+  # Email Categorizer API endpoints (no actual costs, but for tracking)
+  api-emails:
+    input_rate_per_1m: 0.0
+    output_rate_per_1m: 0.0
+  
+  api-classify:
+    input_rate_per_1m: 0.0
+    output_rate_per_1m: 0.0
+  
+  # AI Models (actual costs)
+  gemini-2.0-flash:
+    input_rate_per_1m: 0.075  # $0.075 per 1M input tokens
+    output_rate_per_1m: 0.30   # $0.30 per 1M output tokens
+  
+  gemini-ai-summarizer:
+    input_rate_per_1m: 0.075
+    output_rate_per_1m: 0.30
+  
+  email-classifier:
+    input_rate_per_1m: 0.075
+    output_rate_per_1m: 0.30
+
+# Logging Configuration
+logging:
+  log_file: "logs/api_calls.jsonl"
+  dev_mode: false
+  include_request_body: true
+  include_response_body: false
+  max_body_size: 1000  # characters
