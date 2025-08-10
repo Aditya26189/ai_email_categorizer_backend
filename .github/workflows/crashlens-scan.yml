@@ -44,14 +44,31 @@ jobs:
         with:
           python-version: '3.12'  # Match your project
           
-    
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+          
+      - name: Load cached dependencies
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+        
       - name: Install Crashlens (Latest Published Version)
         run: |
           # Install your published package
-          pip install crashlens==2.9.1
+          poetry run pip install crashlens==2.9.1
           
           # Verify installation
-          crashlens --version
+          poetry run crashlens --version
           
       - name: Initialize Crashlens Configuration
         run: |
@@ -63,7 +80,7 @@ jobs:
           export CRASHLENS_CREATE_WORKFLOW="false"
           
           # Initialize config
-            crashlens init --non-interactive
+          poetry run crashlens init --non-interactive
           
           # Show configuration
           echo "📋 Crashlens Configuration:"
@@ -77,10 +94,10 @@ jobs:
           mkdir -p logs
           
           # Generate different scenarios for comprehensive testing
-            crashlens simulate --output logs/retry-patterns.jsonl --count 50 --scenario retry-loop --seed 42
-            crashlens simulate --output logs/model-overkill.jsonl --count 30 --scenario model-overkill --seed 123
-            crashlens simulate --output logs/normal-usage.jsonl --count ${{ inputs.count || 100 }} --scenario normal --seed 456
-            crashlens simulate --output logs/slow-requests.jsonl --count 25 --scenario slow --seed 789
+          poetry run crashlens simulate --output logs/retry-patterns.jsonl --count 50 --scenario retry-loop --seed 42
+          poetry run crashlens simulate --output logs/model-overkill.jsonl --count 30 --scenario model-overkill --seed 123
+          poetry run crashlens simulate --output logs/normal-usage.jsonl --count ${{ inputs.count || 100 }} --scenario normal --seed 456
+          poetry run crashlens simulate --output logs/slow-requests.jsonl --count 25 --scenario slow --seed 789
           
           # Show generated files
           echo "📁 Generated log files:"
@@ -96,16 +113,10 @@ jobs:
         run: |
           echo "🔍 Running retry loop detection..."
           
-            crashlens policy-check logs/retry-patterns.jsonl \
+          # Run retry loop detection and capture output
+          poetry run crashlens policy-check logs/retry-patterns.jsonl \
             --policy-template retry-loop-prevention \
-            --severity-threshold high \
-            --format markdown > retry-analysis-report.md
-            
-          # Also generate JSON for programmatic access
-            crashlens policy-check logs/retry-patterns.jsonl \
-            --policy-template retry-loop-prevention \
-            --severity-threshold high \
-            --format json > retry-analysis-results.json
+            --severity-threshold high > retry-analysis-report.md 2>&1
             
           echo "✅ Retry analysis completed"
           
@@ -115,10 +126,10 @@ jobs:
         run: |
           echo "🔍 Running model overkill detection..."
           
-            crashlens policy-check logs/model-overkill.jsonl \
+          # Run model overkill detection and capture output
+          poetry run crashlens policy-check logs/model-overkill.jsonl \
             --policy-template model-overkill-detection \
-            --severity-threshold high \
-            --format markdown > model-overkill-report.md
+            --severity-threshold high > model-overkill-report.md 2>&1
             
           echo "✅ Model overkill analysis completed"
           
@@ -131,17 +142,10 @@ jobs:
           # Combine all log files for comprehensive analysis
           cat logs/*.jsonl > logs/combined-logs.jsonl
           
-          # Run full policy suite
-            crashlens policy-check logs/combined-logs.jsonl \
+          # Run full policy suite and capture output
+          poetry run crashlens policy-check logs/combined-logs.jsonl \
             --policy-template all \
-            --severity-threshold medium \
-            --format markdown > comprehensive-analysis-report.md
-            
-          # Generate JSON summary
-            crashlens policy-check logs/combined-logs.jsonl \
-            --policy-template all \
-            --severity-threshold medium \
-            --format json > comprehensive-analysis-results.json
+            --severity-threshold medium > comprehensive-analysis-report.md 2>&1
             
           echo "✅ Comprehensive analysis completed"
           
@@ -152,13 +156,13 @@ jobs:
           echo "🛡️ Running security dependency scan..."
           
           # Install security tools
-            pip install safety bandit
+          poetry run pip install safety bandit
           
           # Check for known vulnerabilities
-            safety check --json --output safety-report.json || echo "Safety scan completed with findings"
+          poetry run safety check --json --output safety-report.json || echo "Safety scan completed with findings"
           
           # Static security analysis on source code
-            bandit -r crashlens/ -f json -o bandit-report.json || echo "Bandit scan completed"
+          poetry run bandit -r crashlens/ -f json -o bandit-report.json || echo "Bandit scan completed"
           
           echo "✅ Security scan completed"
           
@@ -244,7 +248,7 @@ jobs:
           
           EOF
           
-            python analyze_performance.py
+          poetry run python analyze_performance.py
           
       - name: Generate Comprehensive Report
         if: always()
@@ -311,8 +315,6 @@ jobs:
             retry-analysis-report.md
             model-overkill-report.md
             comprehensive-analysis-report.md
-            retry-analysis-results.json
-            comprehensive-analysis-results.json
             performance-analysis-results.json
             safety-report.json
             bandit-report.json
