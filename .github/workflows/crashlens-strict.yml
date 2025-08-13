@@ -1,3 +1,7 @@
+# Example: Strict CrashLens CI Enforcement (Build-Breaking)
+# Copy to .github/workflows/crashlens-strict.yml in your own repo.
+# WARNING: This workflow WILL FAIL your builds if limits are exceeded.
+
 name: CrashLens Strict CI
 
 on:
@@ -22,7 +26,7 @@ jobs:
 
       - name: Install CrashLens and Dependencies
         run: |
-          pip install crashlens==2.9.2
+          pip install crashlens
           sudo apt-get update && sudo apt-get install -y jq bc
 
       - name: Verify log files exist
@@ -200,7 +204,7 @@ jobs:
           - Policy severity threshold: High
           
           ---
-          *Enforced by CrashLens Strict CI v2.9.2*
+          *Enforced by CrashLens Strict CI*
           EOF
 
       - name: Upload Strict Enforcement Results
@@ -212,3 +216,34 @@ jobs:
             strict-enforcement-report.md
             logs/*.jsonl
           retention-days: 7
+
+      # 🔔 Slack Integration - Add your SLACK_WEBHOOK_URL secret
+      - name: Send Slack Notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          custom_payload: |
+            {
+              "text": "⚠️ CrashLens Strict Enforcement Complete",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Strict CrashLens Enforcement*\n• Repository: ${{ github.repository }}\n• Branch: ${{ github.ref_name }}\n• Status: ${{ job.status }}\n• Limits: Daily $5, 20 slow traces, 10 expensive requests\n• Run: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
+                  }
+                },
+                {
+                  "type": "context",
+                  "elements": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "${{ job.status == 'success' && '✅ All limits enforced successfully' || '❌ Policy violations detected - build failed' }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
