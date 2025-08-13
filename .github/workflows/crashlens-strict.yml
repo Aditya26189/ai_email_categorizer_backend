@@ -22,7 +22,7 @@ jobs:
 
       - name: Install CrashLens and Dependencies
         run: |
-          pip install crashlens==2.9.1
+          pip install crashlens==2.9.2
           sudo apt-get update && sudo apt-get install -y jq bc
 
       - name: Verify log files exist
@@ -200,7 +200,7 @@ jobs:
           - Policy severity threshold: High
           
           ---
-          *Enforced by CrashLens Strict CI v2.9.1*
+          *Enforced by CrashLens Strict CI v2.9.2*
           EOF
 
       - name: Upload Strict Enforcement Results
