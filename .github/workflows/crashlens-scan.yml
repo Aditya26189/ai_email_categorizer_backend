@@ -63,7 +63,7 @@ jobs:
       - name: Install Crashlens
         run: |
           # Install Crashlens directly from PyPI
-          pip install crashlens==2.0.0
+          pip install crashlens==2.9.2
           
           # Verify installation
           crashlens --version
