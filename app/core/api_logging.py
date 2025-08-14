@@ -16,7 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from ..core.logger import logger
 
 # Use the actual CrashLens Logger package
-from crashlens_logger import CrashLensLogger, LogEvent
+from crashlens_logger import CrashLensLogger
 
 # Create a wrapper class to handle crashlens-logger v0.1.0 bugs
 class SafeCrashLensLogger(CrashLensLogger):
