@@ -7,18 +7,14 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
-
-# FastAPI imports
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# Local imports
 from ..core.logger import logger
 
 # Use the actual CrashLens Logger package
 from crashlens_logger import CrashLensLogger
 
-# Create a wrapper class to handle crashlens-logger v0.1.0 bugs
 class SafeCrashLensLogger(CrashLensLogger):
     """Wrapper to handle bugs in crashlens-logger v0.1.0"""
     
@@ -27,16 +23,12 @@ class SafeCrashLensLogger(CrashLensLogger):
         from pathlib import Path
         import json
         
-        # Ensure directory exists
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         
-        # Write events manually in simplified format
         with open(output_path, 'a', encoding='utf-8') as f:
             for event in events:
                 try:
-                    # Create simplified log format like the example
                     input_data = getattr(event, 'input', {})
-                    # Remove prompt from input to keep logs clean
                     clean_input = {k: v for k, v in input_data.items() if k != 'prompt'}
                     
                     simple_log = {
