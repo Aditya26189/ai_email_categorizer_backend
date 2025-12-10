@@ -43,7 +43,7 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; `
 >> iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
 ```
 
-- ngrok config add-authtoken 2yjRMK9Yf7Af52zUtx92W6UBYNT_5944VTZw8d1uMEfuBSCT
+- ngrok config add-authtoken <your auth-token>
 - ngrok http http://localhost:8080
 
 
