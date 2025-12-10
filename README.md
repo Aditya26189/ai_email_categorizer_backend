@@ -36,8 +36,20 @@ GMAIL_SCOPES = [
 # use python 3.12
 # download ngrok for local testing webhook from clerk and gmail -> 
 - choco install ngrok
+<<<<<<< HEAD
 - ngrok config add-authtoken <your token>
+=======
+- - if not given permission use this command
+```md
+Set-ExecutionPolicy Bypass -Scope Process -Force; `
+>> [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; `
+>> iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```
+
+- ngrok config add-authtoken 2yjRMK9Yf7Af52zUtx92W6UBYNT_5944VTZw8d1uMEfuBSCT
+>>>>>>> 94bb2a09def6d5cf440c6b59f6eebedb12e9c613
 - ngrok http http://localhost:8080
+
 
 ### 🔄 Complete OAuth Workflow
 
@@ -280,8 +292,8 @@ cd ai_email_categorizer
 
 2. Create and activate a virtual environment:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+py -3.12 -m venv venv_py312   
+.\venv_py312\Scripts\activate
 ```
 
 3. Install dependencies:

@@ -1,0 +1,79 @@
+{
+  "total_requests": 15,
+  "retry_requests": 4,
+  "high_cost_retries": 3,
+  "violations": [
+    {
+      "rule": "excessive_retry_pattern",
+      "severity": "critical",
+      "message": "Excessive retries detected: 5",
+      "trace_id": "excessive-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "high_cost_retry_cascade",
+      "severity": "high",
+      "message": "High-cost retry detected: $0.0800 (retries: 5)",
+      "trace_id": "excessive-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "rapid_retry_detection",
+      "severity": "medium",
+      "message": "Rapid retries on short requests: 5 retries, 125 tokens",
+      "trace_id": "excessive-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "expensive_model_retries",
+      "severity": "high",
+      "message": "Expensive model gpt-4 used in retry scenario (retries: 2)",
+      "trace_id": "expensive-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "high_cost_retry_cascade",
+      "severity": "high",
+      "message": "High-cost retry detected: $0.1500 (retries: 2)",
+      "trace_id": "expensive-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "expensive_model_retries",
+      "severity": "high",
+      "message": "Expensive model claude-3-opus used in retry scenario (retries: 3)",
+      "trace_id": "high-cost-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "high_cost_retry_cascade",
+      "severity": "high",
+      "message": "High-cost retry detected: $0.1200 (retries: 3)",
+      "trace_id": "high-cost-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "rapid_retry_detection",
+      "severity": "medium",
+      "message": "Rapid retries on short requests: 3 retries, 125 tokens",
+      "trace_id": "high-cost-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "rapid_retry_detection",
+      "severity": "medium",
+      "message": "Rapid retries on short requests: 3 retries, 50 tokens",
+      "trace_id": "rapid-retry-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    },
+    {
+      "rule": "fallback_chain_monitoring",
+      "severity": "low",
+      "message": "Fallback model used (count: 1)",
+      "trace_id": "fallback-1",
+      "timestamp": "2025-08-11T00:33:27.603953Z"
+    }
+  ],
+  "analysis_timestamp": "2025-08-11T00:33:27.624762",
+  "test_log_file": "logs/test_retry_detection_2025-08-11.jsonl"
+}
