@@ -28,6 +28,8 @@ logging:
   include_request_body: true
   include_response_body: false
   max_body_size: 1000  # characters
+<<<<<<< HEAD
+=======
 
 # Retry Loop Detection Policy
 retry_detection:
@@ -56,3 +58,4 @@ retry_detection:
     excessive_retries: 3
     high_cost_per_retry: 0.05
     rapid_retry_count: 2
+>>>>>>> 94bb2a09def6d5cf440c6b59f6eebedb12e9c613

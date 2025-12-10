@@ -1,7 +1,9 @@
 import requests
+import time
 import textwrap
 from loguru import logger
 from app.core.config import settings
+from app.core.api_logging import email_logger
 
 def get_fallback_summary(text: str, max_length: int = 200) -> list[str]:
     """
@@ -37,6 +39,8 @@ def summarize_to_bullets(text: str, max_bullets: int = 5) -> list:
     Returns:
         list: List of bullet point summaries
     """
+    start_time = time.time()
+    
     try:
         prompt = f"""Summarize the following text into {max_bullets} key bullet points.
         Focus on the most important information and main points.
@@ -76,6 +80,15 @@ def summarize_to_bullets(text: str, max_bullets: int = 5) -> list:
         
         # Ensure we don't exceed max_bullets
         bullets = bullets[:max_bullets]
+        
+        # Log the summarization
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        email_logger.log_email_summarization(
+            email_body=text,
+            summary_bullets=bullets,
+            model_used="gemini-ai-summarizer",
+            processing_time_ms=processing_time_ms
+        )
         
         return bullets
     except Exception as e:

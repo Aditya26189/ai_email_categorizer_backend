@@ -4,7 +4,9 @@ from datetime import datetime
 from loguru import logger
 import time
 
-from app.models.email import Email, EmailRequest, EmailIdentifier, ClassifiedEmail
+
+
+from app.models.email import Email, EmailRequest, EmailIdentifier, ClassifiedEmail, EmailRecategorizeRequest, EmailRecategorizeResponse
 from app.db import email_db
 from app.services.gmail_client import get_latest_emails
 from app.utils.llm_utils import summarize_to_bullets
@@ -309,4 +311,190 @@ async def get_emails_by_categories(
             status_code=500,
             detail=f"Failed to retrieve emails by categories: {str(e)}"
         )
+
+@router.put("/recategorize", response_model=EmailRecategorizeResponse)
+async def recategorize_email(
+    request: EmailRecategorizeRequest,
+    user=Depends(clerk_auth)
+):
+    """
+    Re-categorize an existing email.
     
+    Args:
+        request: Contains gmail_id, optional new_category, and regenerate_summary flag
+        
+    Returns:
+        Updated email information with old and new categories
+    """
+    try:
+        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
+        logger.info(f"🔄 Re-categorizing email {request.gmail_id} for user {clerk_user_id}")
+        
+        # Find the email
+        email = await email_db.collection.find_one({
+            "gmail_id": request.gmail_id,
+            "user_id": clerk_user_id
+        })
+        
+        if not email:
+            logger.warning(f"Email not found: {request.gmail_id}")
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "message": "Email not found",
+                    "gmail_id": request.gmail_id,
+                    "help": "Please verify the Gmail ID is correct and belongs to your account"
+                }
+            )
+        
+        old_category = email.get("category")
+        
+        # Determine new category
+        if request.new_category:
+            # Use provided category
+            new_category = request.new_category.strip()
+            logger.info(f"Using provided category: {new_category}")
+        else:
+            # Re-classify using AI
+            new_category = classify_email(email["subject"], email["body"])
+            logger.info(f"AI re-classified email as: {new_category}")
+        
+        # Prepare update data
+        update_data = {
+            "category": new_category,
+            "is_processed": True
+        }
+        
+        # Regenerate summary if requested
+        new_summary = None
+        if request.regenerate_summary:
+            logger.info("Regenerating email summary...")
+            new_summary = summarize_to_bullets(email["body"])
+            update_data["summary"] = new_summary
+            logger.info(f"Generated new summary with {len(new_summary)} bullet points")
+        
+        # Update the email
+        result = await email_db.collection.update_one(
+            {"gmail_id": request.gmail_id, "user_id": clerk_user_id},
+            {"$set": update_data}
+        )
+        
+        if result.modified_count == 0:
+            logger.warning(f"No documents were updated for email: {request.gmail_id}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to update email category"
+            )
+        
+        logger.success(f"✅ Successfully recategorized email {request.gmail_id}: {old_category} → {new_category}")
+        
+        return EmailRecategorizeResponse(
+            message="Email recategorized successfully",
+            gmail_id=request.gmail_id,
+            old_category=old_category,
+            new_category=new_category,
+            summary=new_summary if request.regenerate_summary else None
+        )
+        
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"❌ Error recategorizing email: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to recategorize email: {str(e)}"
+        )
+
+@router.put("/recategorize/bulk")
+async def bulk_recategorize_emails(
+    category: Optional[str] = Query(None, description="Filter emails by current category to recategorize"),
+    regenerate_summary: bool = Query(default=False, description="Whether to regenerate summaries"),
+    user=Depends(clerk_auth)
+):
+    """
+    Bulk re-categorize emails using AI.
+    
+    Args:
+        category: Optional filter to only recategorize emails in a specific category
+        regenerate_summary: Whether to also regenerate summaries
+        
+    Returns:
+        Summary of the bulk recategorization operation
+    """
+    try:
+        clerk_user_id = user.get("clerk_user_id") or user.get("sub")
+        logger.info(f"🔄 Starting bulk recategorization for user {clerk_user_id}")
+        
+        # Build query
+        query = {"user_id": clerk_user_id}
+        if category:
+            query["category"] = {"$regex": f"^{category}$", "$options": "i"}
+            logger.info(f"Filtering by category: {category}")
+        
+        # Get emails to recategorize
+        emails = await email_db.collection.find(query).to_list(length=None)
+        total_emails = len(emails)
+        
+        if total_emails == 0:
+            return {
+                "message": "No emails found to recategorize",
+                "total_processed": 0,
+                "successful": 0,
+                "failed": 0
+            }
+        
+        logger.info(f"Found {total_emails} emails to recategorize")
+        
+        successful = 0
+        failed = 0
+        
+        for email in emails:
+            try:
+                # Re-classify the email
+                old_category = email.get("category")
+                new_category = classify_email(email["subject"], email["body"])
+                
+                update_data = {
+                    "category": new_category,
+                    "is_processed": True
+                }
+                
+                # Regenerate summary if requested
+                if regenerate_summary:
+                    new_summary = summarize_to_bullets(email["body"])
+                    update_data["summary"] = new_summary
+                
+                # Update the email
+                result = await email_db.collection.update_one(
+                    {"gmail_id": email["gmail_id"], "user_id": clerk_user_id},
+                    {"$set": update_data}
+                )
+                
+                if result.modified_count > 0:
+                    successful += 1
+                    logger.debug(f"Recategorized {email['gmail_id']}: {old_category} → {new_category}")
+                else:
+                    failed += 1
+                    logger.warning(f"Failed to update email: {email['gmail_id']}")
+                    
+            except Exception as e:
+                failed += 1
+                logger.error(f"Error processing email {email.get('gmail_id')}: {str(e)}")
+                continue
+        
+        logger.success(f"✅ Bulk recategorization complete: {successful} successful, {failed} failed")
+        
+        return {
+            "message": f"Bulk recategorization completed",
+            "total_processed": total_emails,
+            "successful": successful,
+            "failed": failed
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error in bulk recategorization: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to perform bulk recategorization: {str(e)}"
+        )

@@ -1,6 +1,8 @@
 import os
+import time
 import requests
 from dotenv import load_dotenv
+from app.core.api_logging import email_logger
 
 # Load environment variables from .env file
 load_dotenv()
@@ -10,6 +12,8 @@ def classify_email(subject: str, body: str, return_prompt_and_model: bool = Fals
     Classify an email into predefined categories using Gemini Pro API.
     If return_prompt_and_model is True, also return the prompt and model used.
     """
+    start_time = time.time()
+    
     # Get API key from environment variables
     api_key = os.getenv('GEMINI_API_KEY')
     if not api_key:
@@ -42,8 +46,22 @@ def classify_email(subject: str, body: str, return_prompt_and_model: bool = Fals
         result = response.json()
         if 'candidates' in result and len(result['candidates']) > 0:
             category = result['candidates'][0]['content']['parts'][0]['text'].strip()
+<<<<<<< HEAD
+            
+            # Log the classification
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            email_logger.log_email_classification(
+                email_subject=subject,
+                email_body=body,
+                predicted_category=category,
+                model_used="gemini-2.0-flash",
+                processing_time_ms=processing_time_ms
+            )
+            
+=======
             if return_prompt_and_model:
                 return (category, prompt, model)
+>>>>>>> 94bb2a09def6d5cf440c6b59f6eebedb12e9c613
             return category
         else:
             if return_prompt_and_model:

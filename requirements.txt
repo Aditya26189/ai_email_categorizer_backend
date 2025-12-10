@@ -45,3 +45,9 @@ svix
 # SocketIO
 python-socketio
 
+# Logging and Analysis
+orjson>=3.8.0
+click>=8.0.0
+rich>=12.0.0
+pyyaml>=6.0
+

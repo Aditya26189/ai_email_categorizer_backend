@@ -36,6 +36,9 @@ GMAIL_SCOPES = [
 # use python 3.12
 # download ngrok for local testing webhook from clerk and gmail -> 
 - choco install ngrok
+<<<<<<< HEAD
+- ngrok config add-authtoken <your token>
+=======
 - - if not given permission use this command
 ```md
 Set-ExecutionPolicy Bypass -Scope Process -Force; `

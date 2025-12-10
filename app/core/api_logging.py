@@ -7,6 +7,38 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+<<<<<<< HEAD
+
+# FastAPI imports
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+
+# Local imports
+from ..core.logger import logger
+
+# Use the actual CrashLens Logger package
+from crashlens_logger import CrashLensLogger, LogEvent
+
+# Create a wrapper class to handle crashlens-logger v0.1.0 bugs
+class SafeCrashLensLogger(CrashLensLogger):
+    """Wrapper to handle bugs in crashlens-logger v0.1.0"""
+    
+    def write_logs(self, events, output_path: str) -> None:
+        """Safe write_logs that handles missing attributes and writes in simple format."""
+        from pathlib import Path
+        import json
+        
+        # Ensure directory exists
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        
+        # Write events manually in simplified format
+        with open(output_path, 'a', encoding='utf-8') as f:
+            for event in events:
+                try:
+                    # Create simplified log format like the example
+                    input_data = getattr(event, 'input', {})
+                    # Remove prompt from input to keep logs clean
+=======
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -29,6 +61,7 @@ class SafeCrashLensLogger(CrashLensLogger):
             for event in events:
                 try:
                     input_data = getattr(event, 'input', {})
+>>>>>>> 94bb2a09def6d5cf440c6b59f6eebedb12e9c613
                     clean_input = {k: v for k, v in input_data.items() if k != 'prompt'}
                     
                     simple_log = {
@@ -145,7 +178,11 @@ class APILoggingMiddleware(BaseHTTPMiddleware):
             
             # Add query parameters
             if request.query_params:
+<<<<<<< HEAD
+                request_data["query_params"] = dict(request.query_params)
+=======
                 request_data.update(dict(request.query_params))
+>>>>>>> 94bb2a09def6d5cf440c6b59f6eebedb12e9c613
             
         except Exception as e:
             logger.warning(f"Failed to extract request data: {e}")
